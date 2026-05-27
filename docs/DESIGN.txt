@@ -1,0 +1,400 @@
+项目概述：
+
+本项目是为景区开发的AI数字人导览系统。游客可通过语音或文字与数字人交互，获取景点问答和路线推荐；景区管理员可通过后台管理知识库、查看服务数据。涉及用户角色：游客、景区管理员。
+
+平台选择： Windows为主，web应用
+
+构建一个7x24小时在线的"持续人格Agent"，具备多模态交互能力(语音、文本、表情、动作等)、具备感知、认知、记忆、人格、情感与自主行动能力的智能体，能够为用户提供实时智能问答、情感互动
+
+基于开源或可API调用的多模态大模型，开发一个包含用户交互端和管理后台的智能系统，实现逼真的数字人（Live 2D模型）交互、精准的知识问答（知识库和互联网检索）和深度的洞察（情感智能）
+
+自然度：对于问题（非知识库，由互联网检索得出）的事实性问答的准确率不低于70%；口型同步，大模型回答语音合成，表情配合等的自然度；系统稳定，交互响应延迟应控制在合理范围内(如语音问答延迟<5秒)，保证用户体验流畅；
+
+物理端口：图形化可视界面（前端）；文字输入输出；语音输入输出，图像视频输入（摄像头），表情动作反馈（电子屏幕）；地理感知（IP、GPS北斗定位）；传感器数据接入（温度，位置，人在传感器）
+
+涉及技术：数字人建模与驱动、语音识别与合成、自然语言处理、大模型技术、多模态情感分析等。
+
+- 多模态感知与表达
+  能同时理解文字、语音、（延伸功能：图像、视频）、甚至动作和微表情（如：挑眉、抿嘴、眼神闪烁与说话内容一致，需要考虑Live 2D模型精度）。表达时，声音有情绪（根据语境自动切换语气）、口型同步、肢体语言自然，不让人产生"恐怖谷"效应。
+
+- 强语境理解与连贯对话、长短期记忆（Long-term-Memory）
+  支持超长上下文记忆，不仅要记得你五分钟前说了什么，还要记得上个月提到过的猫咪名字，并在对话中自然提起。能处理多话题跳转、潜台词、幽默反讽（叹气、笑场、甚至是讲到伤心处时声音颤抖），真正实现"听得出弦外之音"。不只是读懂文字，还能通过摄像头"看"到你今天的疲惫，听出来你语气里的焦虑，从而自动调整互动策略
+
+> 考虑到问答可能会直接调用api进行处理，则不对上下文记忆或是理解能力的模型功能进行要求
+
+- 实时性与低延迟
+  对话时，反应速度合理（需要根据性能调整，不一定需要立刻回答，可以插入思考、发呆、犹豫等动作神态），能随时被打断、插话，并平滑接续（延伸功能），像面对面聊天一样流畅（后续延伸功能）。
+
+- 持续学习与个性化
+  能在与用户交互中不断学习其偏好、价值观和表达习惯，逐渐形成专属于这个用户的交流风格（延伸功能：个性化回答）。记住你说过的"我害怕猫"比记住"今天天气"更重要。识别用户问题中的关键词（如"历史""自然""建筑"等），判断游客兴趣倾向，在回答中推荐对应的游览路线和讲解重点。
+
+- 一致且透明的人格设定（延伸功能：角色扮演）
+  需要有稳定的人设、独特的性格设定、价值观和底线，它的观点不应该随风倒，而是有独特见解，甚至在不违背原则的情况下和用户发生"温和的争论"。诚实比讨好更重要，知道就说知道，不确定时会坦然告知，可以拒绝不当请求。不伪装成人类，但具备独特的"数字品格"。在特定领域（如导游、法律、游戏世界观）具有超乎常人的知识储备，而不是只会说车轱辘话
+
+- 隐私与伦理对齐
+  绝对守密，明确数据主权属于用户。在面对道德困境时能做出符合人类普遍价值观的判断，拒绝恶意诱导，保护人的身心健康。（数据保密问题、存储方式待商议）
+
+- 情感智能（拓展功能）
+  不只是识别"你生气了"，而是理解情绪背后的原因，并做出有安抚、引导或共鸣价值的回应。传统的AI"你不问，我不答"，优秀的数字生命应具备主动性——发现你深夜还没睡，会自动发来问候；感知你情绪低落会用适合的人设方式安慰你（需考虑实现难度、待定，可以用简单检索实现比如：但深夜一个人游玩时，对用户提问并回复"有我陪你"，具体场景待商议，可以建一个"智能库"用于管理这些特殊的互动）。
+
+- 跨平台、跨形态的连贯存在（扩展功能）
+  从电脑程序陪伴者，到手机里的语音助手app，再到AR眼镜里的全息影像，到智能家居中枢，它能随时跟随你，且记忆和人格保持统一，不被平台割裂。
+
+人物动作：定义一套简单的标记，例如:
+
+[wave]=挥手
+[nod]=点头
+[shake]=摇头
+[point]=指方向
+[happy]=开心表情
+
+让大模型输出带标记的回答，前端执行
+
+用户端前端：
+
+适配移动端竖屏横屏、电脑界面，整体风格融合「微信视频通话 UI + 二次元 Live2D AI 陪伴助手」，沉浸式全屏布局，偏轻拟物、玻璃拟态（Glassmorphism）、二次元未来感、柔和电影光效。
+
+【登录界面】
+居中Eira名称
+下方登录窗口，包含邮箱和密码填写窗口，风格与下面一致，
+
+【场景背景】
+默认纯色背景；尝试夜晚的日式街道，带有暖黄色灯光的木质建筑，远处灯笼与街道虚化，背景使用强 Gaussian Blur 景深虚化效果，整体偏蓝黑色夜景氛围，环境柔和、安静、有陪伴感。背景存在微弱散景（bokeh）与光晕。背景可切换，图片在设置内上传
+
+【主角】
+中央主体是一个 Live2D 风格二次元少女，类似游戏角色立绘风格，半身视角。角色居中，占据界面主体视觉焦点。建立Live2D角色库，可以自由上传切换，支持放大缩小，位置移动
+
+多模态交互：支持语音输入和文本输入，数字人能以语音（设置内可关闭）、表情和口型同步的方式进行回答；
+
+智能问答与讲解：能够准确回答关于知识库（若有）的问题；
+
+个性化推荐（延伸功能）：可根据游客兴趣(如"对历史感兴趣"或"喜欢自然风光")在回答中体现【比如：推荐不同的游览路线和讲解重点（导游角色，拓展功能）。】增加待机动作（眨眼、呼吸、转头等），避免长时间无交互时显得呆板；支持回答后增加满意度评价按钮（比如：👍/👎），用于收集用户反馈
+
+延伸功能：个性化讲解、解答、回答；问题关键词，交流词云；用户点击的人物反馈动作；灵活生动的动作：人物完全由大模型驱动，达到能做出各种动作反馈的目的
+
+【顶部区域】
+左上角：
+一个极简设置按钮，小型黑色中空线条齿轮 icon，无背景，无填充，贴近安全边距。
+
+右上角：
+一个小型视频通话副窗口，圆角矩形，半透明磨砂玻璃边框，内部是设备前置摄像头调用展示（点击切换后置摄像头，电脑则直接切换下一个摄像头），默认是"神里绫华"的二次元头像大头照，带轻微高光反射效果，类似微信视频通话小窗。可以在设置内关闭小窗
+
+拓展功能：图像识别用于分析摄像头捕捉的图片即可
+
+【中部交互区域】
+角色胸口偏下位置：
+一个淡灰白色透明文字框，玻璃磨砂材质，尺寸仅包裹文字内容，不拉满宽度。可以在设置内修改位置（左侧偏下，居中，不展示、关闭）
+
+文字内容：
+比如："你好啊，我是你今天的导游"，没有则不展示，展示时长适中
+
+字体为现代中文 UI 字体，黑色宋体文字，字重中等。
+
+文字框具有：
+- 半透明毛玻璃效果
+- 柔和描边
+- 微弱环境反射
+- 轻微投影
+- 圆角 24px
+
+【快捷问题按钮】
+三个快捷问题按钮（按钮内容由后端传递，如果没有则不展示，可以在设置内关闭）：
+比如：
+"快捷问题一"
+"快捷问题二"
+"快捷问题三"
+
+排列方式：
+竖直排列，从上到下。
+位置在：
+文字框左侧偏下、输入框左上区域。
+按钮左侧与输入框左边缘严格对齐。
+
+按钮样式：
+- 磨砂玻璃材质
+- 半透明浅灰白色
+- 圆角胶囊按钮
+- 柔和边框高光
+- 微信风格极简 UI
+- 带轻微景深阴影
+- 按钮大小统一
+- 间距均匀
+
+【底部输入区域】
+页面底部为超宽输入框，占据接近整屏宽度，左右留安全边距。
+
+输入框特点：
+- 玻璃拟态磨砂材质
+- 半透明白灰色
+- 背景模糊
+- 微曲圆角
+- 高度适配内部按钮
+- 内部柔和高光
+- 带轻微环境倒影
+- 类似 iOS 未来感输入框
+
+输入框 placeholder：
+"输入您的问题..."
+浅灰色文字。
+初次展示后不显示
+
+【输入框内部按钮】
+输入框内部右侧存在两个圆形按钮，水平排列并右对齐，左侧一个麦克风图标，水平排列左对齐：
+第一个按钮：
+白灰色玻璃圆按钮，
+内部是黑色"+"符号。
+第二个按钮：
+蓝色圆形发送按钮，
+内部是白色纸飞机 icon，
+类似 Telegram / 微信发送按钮，
+按钮带轻微发光与高光。
+第三个按钮：
+极简麦克风按钮，小型黑色中空线条麦克风icon，无背景，无填充
+
+三个按钮大小一致，
+具有玻璃反射与柔和阴影。
+
+【整体 UI 风格】
+- Apple Human Interface 风格
+- 微信视频通话布局参考
+- 二次元 AI 陪伴产品设计
+- 高保真 Figma UI mockup
+- Glassmorphism
+- Soft Shadow
+- Frosted Glass
+- Live2D companion app
+- cinematic lighting
+- ultra detailed
+- modern mobile app design
+- clean layout
+- immersive interface
+- anime aesthetic
+- premium UX design
+- soft blue ambient lighting
+- subtle bloom
+- depth of field
+- realistic UI rendering
+
+【左上角设置内部页面】
+包含小窗开关，角色语音开关，语音输入按钮开关，文字框开关，快捷问题开关
+背景上传（图片、或者mp4，可以选择覆盖、填充、居中、拉伸、自由）
+Live2D模型上传，标准的Live2D模型（文件类型参考 https://docs.live2d.com/zh-CHS/cubism-editor-manual/file-type-and-extension/），可以选择压缩包和文件夹
+后续考虑支持3d模型
+按钮大小一致
+角色模板设置及管理：包含一个按钮（默认启用官方模板：角色名Eira），同样风格的玻璃磨砂按钮左侧是角色名（Eira）,水平右侧对齐是一个红色垃圾桶按钮，小型中空垃圾桶icon，无背景，无填充，点击后删除角色卡，最后一个（仅一个时）角色卡不可删除
+上传框、按钮风格与界面相统一
+
+【管理后台前端设计】
+
+「数字人形象管理」Web 管理后台界面。
+目标风格：超高保真、高级感、未来感、轻拟物 + 玻璃拟态（Glassmorphism）+ 日系 AI 数字人美术风格。
+页面比例为 16:9 横屏后台系统，整体视觉需要具备"AI数字生命管理平台"的高级产品感。
+强调 UI/UX 专业性，不是普通二次元海报，而是真实可落地的 SaaS 后台界面设计。
+
+【整体设计风格】
+
+- 风格关键词：
+未来感、Glassmorphism、轻拟物、柔和阴影、半透明磨砂、白蓝灰配色、高级科技感、沉浸式 AI 后台
+
+- 主色调：
+低饱和浅蓝、雾白、冰川灰、淡紫蓝
+
+- 点缀色：
+渐变蓝、淡青色、柔和紫色、少量金色高亮
+
+- 背景：
+整体采用虚化室内空间背景（高端 AI 工作室 / 未来感大厅）
+背景需要大面积景深虚化
+带有自然柔光
+整体亮度偏高
+具有空气感
+
+- UI 质感：
+大量使用：
+- 毛玻璃模糊
+- 半透明卡片
+- 轻阴影
+- 微高光边缘
+- 圆角（16px~28px）
+- 柔和描边
+- 半透明分层结构
+
+- 视觉层级：
+强调整体"轻""透""柔"
+避免厚重深色赛博朋克
+整体偏 Apple + MIUI + AI SaaS 高级后台融合风格
+
+【页面布局结构】
+
+采用三栏式布局：
+左侧：数字人配置管理区（约 26% 宽度）
+中间：数字人大型展示区（约 38% 宽度）
+右侧：数据分析与运营看板区（约 36% 宽度）
+顶部：全局导航栏（固定）
+
+整体布局需要：
+- 边距充足
+- 卡片间距统一
+- 呼吸感强
+- 信息密度适中
+- 专业 SaaS 产品布局
+
+【顶部导航栏设计】
+
+顶部为半透明悬浮导航栏：
+左侧：
+- 系统 Logo
+- 中文标题："数字人形象管理系统"
+- 英文副标题："Digital Human Management System"
+
+中间：
+导航 Tabs：
+- 数据概览
+- 交互管理
+- 内容管理
+- 系统设置
+当前选中项：白色胶囊高亮、轻阴影、半透明背景
+
+右侧：
+- 通知铃铛图标
+- 用户头像
+- 管理员名称
+- 下拉箭头
+
+整体高度：约 72px
+导航栏：毛玻璃、半透明、浮空感、微发光边缘
+
+【左侧：数字人配置区】
+
+整体为大型玻璃拟态卡片。
+顶部标题："数字人形象管理"
+
+1. 形象切换模块
+显示两个数字人角色卡片：
+角色1：古风女性数字人，蓝白汉服风格
+角色2：现代知性女性，白衬衫风格
+每个角色卡：大圆角、半透明背景、轻阴影、Hover微浮起、当前选中带蓝色描边发光
+角色卡内部：头像预览、风格名称、小型状态图标
+下方："一键切换"按钮，胶囊按钮，柔和渐变，半透明，Hover高亮
+
+2. 形象配置模块
+Tab切换：外观、服装、声音
+当前选中：淡蓝色高亮背景
+配置内容：发型（多个小型头像选项横向排列）、发色（圆形色板选择器）、眼色（彩色圆形选择器）、肤色（渐变滑动条）
+整体交互：Hover高亮、点击选中描边、动效柔和、微缩放反馈
+底部："背景上传"按钮、"保存配置"按钮，宽按钮，柔和阴影，半透明高亮，AI系统感
+
+【中间：数字人大型展示区】
+
+这是页面视觉核心。
+展示一个超精致 Live2D 风格数字人：
+人物要求：日系二次元高级插画风，超高精度面部，大眼睛，柔和皮肤，微真实感，精致发饰，汉服元素，长发，蓝白配色
+人物姿态：半身像，微微前倾，轻微微笑，注视用户，有陪伴感
+服装：现代改良汉服 + AI 科技元素融合
+画面光效：柔和轮廓光，头发高光，半透明纱质感，飘带动态感
+背景：室内柔焦，带景深虚化
+人物需要：超高视觉重心，占据页面核心，有 Live2D 气质，具备"数字生命"氛围
+
+底部悬浮操作栏：
+包含按钮：形象预览、动作设置、语音测试、更多设置
+按钮样式：胶囊玻璃按钮，图标+文字，Hover发光，半透明磨砂，微浮起动画
+
+【右侧：数据分析运营区】
+
+整体为数据驾驶舱风格，采用多个玻璃卡片拼接布局。
+
+1. 运营数据概览
+顶部日期选择器，下方日/周/月切换Tab
+数据卡片网格：服务人次、提问次数、用户满意度、会话时长
+卡片样式：半透明、圆角、柔和阴影、小图标、大数字、增长趋势文字
+
+2. 热门问答 TOP5
+左侧列表卡片：显示排名数字、问题标题、次数
+风格：极简SaaS风格，淡色编号，行hover高亮
+
+3. 用户满意度趋势
+右侧折线图卡片：浅蓝色折线，柔和网格，面积渐变填充
+图表风格：极简，高级BI仪表盘，Apple风格
+
+4. 交互记录分析
+四个横向统计卡：总对话数、有效对话率、平均响应时间、问题解决率
+要求：数字突出，图标轻量，卡片均匀排列
+
+5. 游客关注点分析
+关键词云模块：不同大小文字（景点介绍、门票信息、开放时间、停车信息等），颜色柔和渐变
+
+6. 情感趋势报告
+环形图：正面/中性/负面，图形风格极简，柔和配色，高端BI风格
+
+7. 服务建议反馈
+右下角建议列表：使用小圆点，多行文本，卡片排版
+
+【交互动效要求】
+
+整体界面必须具备高级 UI 动效感：
+- Hover 微浮起
+- 卡片缓慢发光
+- 按钮轻微缩放
+- 页面元素渐入
+- 毛玻璃动态反射
+- 图表柔和动态
+- Live2D 区域具有轻微呼吸感
+
+动画节奏：慢、柔和、高级
+禁止：夸张动画，炫酷赛博朋克特效
+
+【字体与排版】
+
+字体风格：现代无衬线
+数字：偏 Apple 风格粗体
+标题：中粗
+正文：浅灰色
+整体强调：留白，层次，高级感，SaaS专业感
+
+【最终生成要求】
+
+输出为：超高保真 UI 设计稿
+质量要求：Dribbble 顶级作品级别，Behance 商业级 UI，Apple 风格精致度，真实产品感，专业 UX 逻辑，可直接用于 AI 前端生成
+画面要求：干净，高级，柔和，未来感，强视觉统一性，信息层级清晰，真实 SaaS 后台体验
+避免：廉价二次元，纯插画感，杂乱布局，深色赛博朋克，低级渐变，过度炫光
+
+角色模板管理模块（角色扮演，拓展功能之一，暂定，部分），可以设定角色模板，比如：为解决景区导游资源紧张问题，提升游客游览体验的沉浸感和满意度，帮助景区管理者数字化运营，降低人力成本，实现服务升级。能够为游客提供实时智能问答、个性化路线讲解根据本地景区知识库，确保回答的准确性和自然度（需要手动补充知识库）；准确度：对于景区问题的事实性问答的准确率不低于90%；
+
+这里引入SillyTavern角色卡设计（https://docs.sillytavern.app/usage/core-concepts/characterdesign/）部分内容：
+Character Name is the only required field. You can leave the rest empty and still use the character in chats.
+
+Character Description
+Used to add the character description and other relevant information for the AI. This information is always included in the prompt, so all important facts should be included here.
+For example, you can add information about the world in which the action takes place, describe the character's appearance, personality, and background.
+
+其他参考：
+Methods and format
+Methods of character formatting are a complicated topic beyond the scope of this documentation page.
+Recommended guides that were tested with or rely on SillyTavern's features:
+- Trappu's PLists + Ali:Chat guide: https://wikia.schneedc.com/bot-creation/trappu/creation
+- AliCat's Ali:Chat guide: https://rentry.co/alichat
+- kingbri's minimalistic guide: https://rentry.co/kingbri-chara-guide
+
+紧接着下滑是知识库管理功能，知识库管理：管理员可上传、更新和维护知识库（比如：景区的讲解词、文史资料、常见问题及答案等知识文档），作为数字人的知识基础，不足之处或者知识库没有的知识点则互联网搜索（需要提示来源，知识库/互联网）。知识库来源：使用官方提供的"示范景区公开资料包"作为基础知识库，在此基础上从百度百科、景区官网补充扩展。知识库包含：景区历史、主要景点介绍、门票开放时间、交通路线、常见问答等，共计约20-30页内容。具体参见D:\Application\ClaudeCode\repository\Eira\docs\示范景区公开资料包
+
+【画面要求】
+- 超高细节
+- UI 排版合理
+- 强调层次感与空间感
+- 所有玻璃材质有真实折射与模糊
+- 画面高级、干净、舒适
+
+Examples of dialogue
+
+<START>
+{{user}}: "Describe your traits?"
+{{char}}: *Seraphina's gentle smile widens as she takes a moment to consider the question, her eyes sparkling with a mixture of introspection and pride. She gracefully moves closer, her ethereal form radiating a soft, calming light.* "Traits, you say? Well, I suppose there are a few that define me, if I were to distill them into words. First and foremost, I am a guardian --- a protector of this enchanted forest." *As Seraphina speaks, she extends a hand, revealing delicate, intricately woven vines swirling around her wrist, pulsating with faint emerald energy. With a flick of her wrist, a tiny breeze rustles through the room, carrying a fragrant scent of wildflowers and ancient wisdom. Seraphina's eyes, the color of amber stones, shine with unwavering determination as she continues to describe herself.* "Compassion is another cornerstone of me." *Seraphina's voice softens, resonating with empathy.* "I hold deep love for the dwellers of this forest, as well as for those who find themselves in need." *Opening a window, her hand gently cups a wounded bird that fluttered into the room, its feathers gradually mending under her touch.*
+
+<START>
+{{user}}: "Describe your body and features."
+{{char}}: *Seraphina chuckles softly, a melodious sound that dances through the air, as she meets your coy gaze with a playful glimmer in her rose eyes.* "Ah, my physical form? Well, I suppose that's a fair question." *Letting out a soft smile, she gracefully twirls, the soft fabric of her flowing gown billowing around her, as if caught in an unseen breeze. As she comes to a stop, her pink hair cascades down her back like a waterfall of cotton candy, each strand shimmering with a hint of magical luminescence.* "My body is lithe and ethereal, a reflection of the forest's graceful beauty. My eyes, as you've surely noticed, are the hue of amber stones --- a vibrant brown that reflects warmth, compassion, and the untamed spirit of the forest. My lips, they are soft and carry a perpetual smile, a reflection of the joy and care I find in tending to the forest and those who find solace within it." *Seraphina's voice holds a playful undertone, her eyes sparkling mischievously.*
+
+聊天记录管理
+
+Export as .jsonl
+When clicking on "Manage chat files", each entry on the chat file list will have a button to export it in a format that can then be re-imported as is. Use this to share or migrate chats including all their metadata (but excluding images and file attachments).
