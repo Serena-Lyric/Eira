@@ -1,15 +1,16 @@
 from functools import lru_cache
-import os
 import boto3
 from botocore.client import Config
+from app.core.config import get_settings
 
 
 def _opts() -> dict:
+    s = get_settings().oss
     return {
-        "endpoint_url": os.environ.get("EIRA_OSS_ENDPOINT", "http://localhost:9000"),
-        "aws_access_key_id": os.environ.get("EIRA_OSS_KEY", "eira"),
-        "aws_secret_access_key": os.environ.get("EIRA_OSS_SECRET", "eira-secret"),
-        "region_name": os.environ.get("EIRA_OSS_REGION", "us-east-1"),
+        "endpoint_url": s.endpoint,
+        "aws_access_key_id": s.key,
+        "aws_secret_access_key": s.secret,
+        "region_name": s.region,
         "config": Config(signature_version="s3v4"),
     }
 

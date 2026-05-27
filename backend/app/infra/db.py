@@ -1,13 +1,10 @@
 from functools import lru_cache
-import os
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from app.core.config import get_settings
 
 
 def _build_dsn() -> str:
-    return os.environ.get(
-        "EIRA_DB_DSN",
-        "postgresql+asyncpg://eira:eira@localhost:5432/eira",
-    )
+    return get_settings().db.dsn
 
 
 @lru_cache
