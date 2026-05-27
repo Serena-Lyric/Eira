@@ -1,0 +1,73 @@
+name: ci
+on:
+  pull_request:
+  push: { branches: [main] }
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      pg:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: eira
+          POSTGRES_USER: eira
+          POSTGRES_PASSWORD: eira
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U eira"
+          --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: eira
+          MINIO_ROOT_PASSWORD: eira-secret
+        ports: ["9000:9000"]
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/ready || exit 1"
+          --health-interval 10s --health-retries 12
+    env:
+      EIRA_DB__DSN: postgresql+asyncpg://eira:eira@localhost:5432/eira
+      EIRA_REDIS__URL: redis://localhost:6379/0
+      EIRA_OSS__ENDPOINT: http://localhost:9000
+      EIRA_OSS__KEY: eira
+      EIRA_OSS__SECRET: eira-secret
+      EIRA_JWT__SECRET: ci-test-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: astral-sh/setup-uv@v3
+      - name: install
+        working-directory: backend
+        run: uv sync --extra dev
+      - name: init oss buckets
+        working-directory: backend
+        run: uv run python ../scripts/init_oss_buckets.py
+      - name: alembic upgrade
+        working-directory: backend
+        run: uv run alembic upgrade head
+      - name: ruff
+        working-directory: backend
+        run: uv run ruff check .
+      - name: mypy (limited)
+        working-directory: backend
+        run: uv run mypy app/domain app/orchestrator app/capabilities || true
+      - name: pytest
+        working-directory: backend
+        run: uv run pytest --cov=app --cov-report=xml --cov-fail-under=70
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r run lint
+      - run: pnpm -r run test
+      - run: pnpm -r run build

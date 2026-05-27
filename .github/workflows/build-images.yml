@@ -1,0 +1,16 @@
+name: build-images
+on:
+  push: { branches: [main] }
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build backend
+        working-directory: backend
+        run: docker build -t eira-backend .
+      - name: build web-user
+        run: docker build -f apps/web-user/Dockerfile -t eira-web-user .
+      - name: build web-admin
+        run: docker build -f apps/web-admin/Dockerfile -t eira-web-admin .
