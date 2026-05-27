@@ -9,19 +9,24 @@
     "lint": "eslint src --ext .ts,.vue"
   },
   "dependencies": {
-    "vue": "^3.4.0",
-    "vue-router": "^4.3.0",
-    "pinia": "^2.1.0",
+    "@eira/ui-shared": "workspace:*",
+    "@vueuse/core": "^14.3.0",
+    "@vueuse/motion": "^3.0.3",
     "axios": "^1.7.0",
-    "@eira/ui-shared": "workspace:*"
+    "pinia": "^2.1.0",
+    "pixi-live2d-display": "^0.4",
+    "pixi.js": "^7",
+    "vue": "^3.4.0",
+    "vue-router": "^4.3.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
-    "vite": "^5.2.0",
-    "vue-tsc": "^2.0.0",
-    "typescript": "^5.4.0",
     "@vue/test-utils": "^2.4.0",
+    "happy-dom": "^14.0.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "vite-plugin-static-copy": "^4.1.0",
     "vitest": "^1.6.0",
-    "happy-dom": "^14.0.0"
+    "vue-tsc": "^2.0.0"
   }
 }

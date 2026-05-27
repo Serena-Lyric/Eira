@@ -1,13 +1,18 @@
 :root {
-  --eira-glass-bg: rgba(255, 255, 255, 0.55);
-  --eira-glass-bg-dark: rgba(20, 28, 48, 0.55);
-  --eira-glass-border: rgba(255, 255, 255, 0.35);
-  --eira-glass-blur: 18px;
-  --eira-radius-sm: 12px;
-  --eira-radius-md: 18px;
-  --eira-radius-lg: 24px;
-  --eira-shadow-soft: 0 6px 24px rgba(20, 40, 80, 0.1);
-  --eira-text-primary: #1a2233;
-  --eira-text-muted: #5b6478;
-  --eira-accent: #4f8cff;
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.35);
+  --glass-blur: 24px;
+  --radius-card: 24px;
+  --radius-pill: 9999px;
+  --shadow-soft: 0 8px 32px rgba(0, 40, 90, 0.08);
+  --color-accent: #6aa2ff;
+  --color-text-primary: #1d2433;
+  --ease-soft: cubic-bezier(.4, .0, .2, 1);
+}
+
+[data-theme="dark"] {
+  --glass-bg: rgba(20, 20, 25, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.15);
+  --color-text-primary: #ffffff;
+  --shadow-soft: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
