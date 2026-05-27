@@ -6,7 +6,18 @@
       "Bash(touch apps/web-user/.gitkeep apps/web-admin/.gitkeep packages/ui-shared/.gitkeep backend/.gitkeep deploy/.gitkeep scripts/.gitkeep docs/superpowers/validations/.gitkeep)",
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(where python *)",
+      "Bash(where pip *)",
+      "Bash(pnpm --version)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(pip install *)",
+      "Bash(python -m pip install uv)",
+      "Bash(uv --version)",
+      "Bash(python *)",
+      "Bash(pnpm -r run test)",
+      "Bash(pnpm -r run build)"
     ]
   }
 }

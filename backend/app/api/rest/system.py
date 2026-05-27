@@ -28,7 +28,7 @@ async def readyz(response: Response) -> dict:
     except Exception:
         pass
     try:
-        if await get_redis().ping():
+        if await get_redis().ping():  # type: ignore[misc]
             out["redis"] = "up"
     except Exception:
         pass

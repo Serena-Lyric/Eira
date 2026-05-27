@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from fastapi import Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import decode_token
@@ -7,7 +8,7 @@ from app.domain.identity.service import IdentityService
 from app.domain.identity.models import User
 
 
-async def get_db_session() -> AsyncSession:
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     factory = get_session_factory()
     async with factory() as s:
         yield s
