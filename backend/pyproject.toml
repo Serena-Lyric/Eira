@@ -15,6 +15,8 @@ dependencies = [
   "redis>=5.0",
   "boto3>=1.34",
   "prometheus-client>=0.20",
+  "passlib[bcrypt]>=1.7",
+  "python-jose[cryptography]>=3.3",
 ]
 
 [project.optional-dependencies]
