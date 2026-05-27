@@ -5,8 +5,9 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "jsx": "preserve",
-    "types": ["vitest/globals"],
-    "lib": ["ES2022", "DOM"],
+    "jsxImportSource": "vue",
+    "types": ["vite/client", "vitest/globals"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "esModuleInterop": true,
     "skipLibCheck": true,
     "isolatedModules": true
