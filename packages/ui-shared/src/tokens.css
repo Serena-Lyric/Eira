@@ -1,0 +1,13 @@
+:root {
+  --eira-glass-bg: rgba(255, 255, 255, 0.55);
+  --eira-glass-bg-dark: rgba(20, 28, 48, 0.55);
+  --eira-glass-border: rgba(255, 255, 255, 0.35);
+  --eira-glass-blur: 18px;
+  --eira-radius-sm: 12px;
+  --eira-radius-md: 18px;
+  --eira-radius-lg: 24px;
+  --eira-shadow-soft: 0 6px 24px rgba(20, 40, 80, 0.1);
+  --eira-text-primary: #1a2233;
+  --eira-text-muted: #5b6478;
+  --eira-accent: #4f8cff;
+}
