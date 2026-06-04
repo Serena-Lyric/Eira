@@ -1,18 +1,19 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
+import bcrypt
 from jose import jwt, JWTError
-from passlib.context import CryptContext
 from app.core.config import get_settings
-
-_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 
 
 def hash_password(p: str) -> str:
-    return _pwd.hash(p)
+    return bcrypt.hashpw(
+        p.encode("utf-8"), bcrypt.gensalt(rounds=12)
+    ).decode("utf-8")
 
 
 def verify_password(p: str, h: str) -> bool:
-    return _pwd.verify(p, h)
+    return bcrypt.checkpw(p.encode("utf-8"), h.encode("utf-8"))
 
 
 def _now() -> datetime:
@@ -26,6 +27,7 @@ def issue_token(sub: str, role: str, kind: Literal["access", "refresh"]) -> str:
         "sub": sub,
         "role": role,
         "kind": kind,
+        "jti": uuid.uuid4().hex,
         "iat": int(_now().timestamp()),
         "exp": int((_now() + timedelta(seconds=ttl)).timestamp()),
     }

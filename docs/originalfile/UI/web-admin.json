@@ -1,0 +1,416 @@
+{
+  "canvas": {
+    "width": 1920,
+    "height": 1080,
+    "background": "#EBF2FA",
+    "theme": "light",
+    "style": {
+      "backgroundImage": "linear-gradient(135deg, #E2EDF9 0%, #E8EBF5 50%, #F4F7FB 100%)",
+      "fontFamily": "Inter, system-ui, -apple-system, sans-serif"
+    }
+  },
+  "layout": {
+    "type": "flex",
+    "direction": "column",
+    "width": "100%",
+    "height": "100%",
+    "padding": "0px",
+    "children": [
+      {
+        "id": "navbar",
+        "type": "Header",
+        "position": 1,
+        "styles": {
+          "width": "100%",
+          "height": "80px",
+          "display": "flex",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+          "alignItems": "center",
+          "padding": "0px 40px",
+          "background": "rgba(255, 255, 255, 0.4)",
+          "backdropFilter": "blur(20px)",
+          "borderBottom": "1px solid rgba(255, 255, 255, 0.6)"
+        }
+      },
+      {
+        "id": "main-container",
+        "type": "Container",
+        "position": 2,
+        "styles": {
+          "width": "100%",
+          "height": "1000px",
+          "display": "flex",
+          "flexDirection": "row",
+          "padding": "24px 40px",
+          "gap": "24px"
+        }
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "logo-zone",
+      "parentId": "navbar",
+      "type": "Div",
+      "styles": {
+        "display": "flex",
+        "alignItems": "center",
+        "gap": "12px"
+      },
+      "children": [
+        {
+          "id": "logo-icon",
+          "type": "Icon",
+          "styles": {
+            "width": "32px",
+            "height": "32px",
+            "color": "#3B82F6"
+          }
+        },
+        {
+          "id": "logo-text-cn",
+          "type": "Text",
+          "content": "数字人形象管理系统",
+          "styles": {
+            "fontSize": "18px",
+            "fontWeight": "600",
+            "color": "#1F2937"
+          }
+        },
+        {
+          "id": "logo-text-en",
+          "type": "Text",
+          "content": "Digital Human Management System",
+          "styles": {
+            "fontSize": "11px",
+            "color": "#6B7280",
+            "marginLeft": "4px"
+          }
+        }
+      ]
+    },
+    {
+      "id": "nav-menu",
+      "parentId": "navbar",
+      "type": "Menu",
+      "styles": {
+        "display": "flex",
+        "gap": "8px",
+        "background": "rgba(243, 244, 246, 0.6)",
+        "borderRadius": "24px",
+        "padding": "4px"
+      },
+      "children": [
+        {
+          "id": "nav-item-1",
+          "type": "Button",
+          "content": "数据概览",
+          "styles": {
+            "padding": "10px 24px",
+            "borderRadius": "20px",
+            "background": "#FFFFFF",
+            "color": "#1F2937",
+            "fontWeight": "600",
+            "boxShadow": "0px 2px 4px rgba(0, 0, 0, 0.05)"
+          }
+        },
+        {
+          "id": "nav-item-2",
+          "type": "Button",
+          "content": "交互管理",
+          "styles": {
+            "padding": "10px 24px",
+            "borderRadius": "20px",
+            "background": "transparent",
+            "color": "#4B5563"
+          }
+        },
+        {
+          "id": "nav-item-3",
+          "type": "Button",
+          "content": "内容管理",
+          "styles": {
+            "padding": "10px 24px",
+            "borderRadius": "20px",
+            "background": "transparent",
+            "color": "#4B5563"
+          }
+        },
+        {
+          "id": "nav-item-4",
+          "type": "Button",
+          "content": "系统设置",
+          "styles": {
+            "padding": "10px 24px",
+            "borderRadius": "20px",
+            "background": "transparent",
+            "color": "#4B5563"
+          }
+        }
+      ]
+    },
+    {
+      "id": "user-profile",
+      "parentId": "navbar",
+      "type": "Div",
+      "styles": {
+        "display": "flex",
+        "alignItems": "center",
+        "gap": "16px"
+      },
+      "children": [
+        {
+          "id": "bell-btn",
+          "type": "Button",
+          "styles": {
+            "width": "40px",
+            "height": "40px",
+            "borderRadius": "50%",
+            "background": "#FFFFFF",
+            "display": "flex",
+            "justifyContent": "center",
+            "alignItems": "center"
+          }
+        },
+        {
+          "id": "avatar-img",
+          "type": "Image",
+          "styles": {
+            "width": "40px",
+            "height": "40px",
+            "borderRadius": "50%",
+            "border": "2px solid #FFFFFF"
+          }
+        },
+        {
+          "id": "username",
+          "type": "Text",
+          "content": "管理员",
+          "styles": {
+            "fontSize": "14px",
+            "fontWeight": "500",
+            "color": "#1F2937"
+          }
+        }
+      ]
+    },
+    {
+      "id": "left-panel",
+      "parentId": "main-container",
+      "type": "Aside",
+      "styles": {
+        "width": "340px",
+        "height": "100%",
+        "background": "rgba(255, 255, 255, 0.6)",
+        "backdropFilter": "blur(20px)",
+        "borderRadius": "24px",
+        "padding": "24px",
+        "display": "flex",
+        "flexDirection": "column",
+        "gap": "24px",
+        "boxShadow": "0px 4px 20px rgba(0, 0, 0, 0.03)"
+      }
+    },
+    {
+      "id": "center-panel",
+      "parentId": "main-container",
+      "type": "Section",
+      "styles": {
+        "flex": "1",
+        "height": "100%",
+        "position": "relative",
+        "display": "flex",
+        "justifyContent": "center",
+        "alignItems": "center"
+      },
+      "children": [
+        {
+          "id": "avatar-preview-container",
+          "type": "Div",
+          "styles": {
+            "width": "100%",
+            "height": "100%",
+            "borderRadius": "24px",
+            "overflow": "hidden",
+            "position": "relative"
+          }
+        },
+        {
+          "id": "center-bottom-actions",
+          "type": "Div",
+          "styles": {
+            "position": "absolute",
+            "bottom": "24px",
+            "display": "flex",
+            "gap": "12px",
+            "background": "rgba(255, 255, 255, 0.5)",
+            "backdropFilter": "blur(15px)",
+            "padding": "8px",
+            "borderRadius": "24px"
+          },
+          "children": [
+            { "id": "act-btn-1", "type": "Button", "content": "形象预览", "styles": { "padding": "10px 20px", "borderRadius": "18px", "background": "#FFFFFF" } },
+            { "id": "act-btn-2", "type": "Button", "content": "动作设置", "styles": { "padding": "10px 20px", "borderRadius": "18px", "background": "transparent" } },
+            { "id": "act-btn-3", "type": "Button", "content": "语音测试", "styles": { "padding": "10px 20px", "borderRadius": "18px", "background": "transparent" } },
+            { "id": "act-btn-4", "type": "Button", "content": "更多设置", "styles": { "padding": "10px 20px", "borderRadius": "18px", "background": "transparent" } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "right-panel",
+      "parentId": "main-container",
+      "type": "Section",
+      "styles": {
+        "width": "620px",
+        "height": "100%",
+        "display": "flex",
+        "flexDirection": "column",
+        "gap": "20px",
+        "overflowY": "auto"
+      }
+    },
+    {
+      "id": "dashboard-header",
+      "parentId": "right-panel",
+      "type": "Div",
+      "styles": {
+        "display": "flex",
+        "justifyContent": "space-between",
+        "alignItems": "center"
+      },
+      "children": [
+        {
+          "id": "db-title",
+          "type": "Text",
+          "content": "运营数据概览",
+          "styles": { "fontSize": "18px", "fontWeight": "600", "color": "#1F2937" }
+        },
+        {
+          "id": "db-tabs",
+          "type": "Div",
+          "styles": { "display": "flex", "gap": "4px", "background": "#FFFFFF", "padding": "4px", "borderRadius": "16px" },
+          "children": [
+            { "id": "tab-day", "type": "Button", "content": "当日", "styles": { "background": "#3B82F6", "color": "#FFFFFF", "borderRadius": "12px", "padding": "6px 16px" } },
+            { "id": "tab-week", "type": "Button", "content": "本周", "styles": { "background": "transparent", "color": "#6B7280", "padding": "6px 16px" } },
+            { "id": "tab-month", "type": "Button", "content": "本月", "styles": { "background": "transparent", "color": "#6B7280", "padding": "6px 16px" } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "metric-grid-1",
+      "parentId": "right-panel",
+      "type": "Div",
+      "styles": {
+        "display": "grid",
+        "gridTemplateColumns": "repeat(4, 1fr)",
+        "gap": "12px"
+      }
+    },
+    {
+      "id": "metric-card-1",
+      "parentId": "metric-grid-1",
+      "type": "Card",
+      "styles": { "background": "#FFFFFF", "borderRadius": "16px", "padding": "16px", "boxShadow": "0px 2px 10px rgba(0,0,0,0.01)" },
+      "children": [
+        { "id": "m1-title", "type": "Text", "content": "服务人次", "styles": { "fontSize": "12px", "color": "#6B7280" } },
+        { "id": "m1-value", "type": "Text", "content": "1,258", "styles": { "fontSize": "22px", "fontWeight": "700", "color": "#1F2937", "margin": "8px 0px" } },
+        { "id": "m1-trend", "type": "Text", "content": "较昨日 ↑ 12.5%", "styles": { "fontSize": "11px", "color": "#10B981" } }
+      ]
+    },
+    {
+      "id": "charts-row-1",
+      "parentId": "right-panel",
+      "type": "Div",
+      "styles": {
+        "display": "grid",
+        "gridTemplateColumns": "1fr 1fr",
+        "gap": "16px"
+      }
+    },
+    {
+      "id": "top-qa-card",
+      "parentId": "charts-row-1",
+      "type": "Card",
+      "styles": { "background": "#FFFFFF", "borderRadius": "20px", "padding": "20px" },
+      "children": [
+        { "id": "qa-title", "type": "Text", "content": "热门问答 TOP5", "styles": { "fontSize": "14px", "fontWeight": "600" } }
+      ]
+    },
+    {
+      "id": "satisfraction-trend-card",
+      "parentId": "charts-row-1",
+      "type": "Card",
+      "styles": { "background": "#FFFFFF", "borderRadius": "20px", "padding": "20px" },
+      "children": [
+        { "id": "sat-title", "type": "Text", "content": "用户满意度趋势", "styles": { "fontSize": "14px", "fontWeight": "600" } }
+      ]
+    },
+    {
+      "id": "interaction-analysis-zone",
+      "parentId": "right-panel",
+      "type": "Div",
+      "styles": {
+        "background": "#FFFFFF",
+        "borderRadius": "20px",
+        "padding": "20px",
+        "display": "flex",
+        "flexDirection": "column",
+        "gap": "16px"
+      }
+    },
+    {
+      "id": "bottom-insights-row",
+      "parentId": "right-panel",
+      "type": "Div",
+      "styles": {
+        "display": "grid",
+        "gridTemplateColumns": "1.2fr 1fr 1.3fr",
+        "gap": "16px"
+      }
+    },
+    {
+      "id": "wordcloud-card",
+      "parentId": "bottom-insights-row",
+      "type": "Card",
+      "styles": { "background": "#FFFFFF", "borderRadius": "20px", "padding": "16px" }
+    },
+    {
+      "id": "sentiment-card",
+      "parentId": "bottom-insights-row",
+      "type": "Card",
+      "styles": { "background": "#FFFFFF", "borderRadius": "20px", "padding": "16px" }
+    },
+    {
+      "id": "feedback-card",
+      "parentId": "bottom-insights-row",
+      "type": "Card",
+      "styles": { "background": "#FFFFFF", "borderRadius": "20px", "padding": "16px" }
+    }
+  ],
+  "assets": {
+    "colors": {
+      "primary": "#3B82F6",
+      "success": "#10B981",
+      "danger": "#EF4444",
+      "textDark": "#1F2937",
+      "textMuted": "#6B7280",
+      "bgGlass": "rgba(255, 255, 255, 0.6)"
+    },
+    "spacing": {
+      "xs": "4px",
+      "sm": "8px",
+      "md": "16px",
+      "lg": "24px",
+      "xl": "40px"
+    },
+    "borderRadius": {
+      "small": "8px",
+      "medium": "16px",
+      "large": "24px"
+    }
+  }
+}
+

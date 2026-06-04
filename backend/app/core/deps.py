@@ -10,8 +10,15 @@ from app.domain.identity.models import User
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     factory = get_session_factory()
-    async with factory() as s:
+    s = factory()
+    try:
         yield s
+        await s.commit()
+    except Exception:
+        await s.rollback()
+        raise
+    finally:
+        await s.close()
 
 
 def get_identity_service(

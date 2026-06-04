@@ -33,6 +33,18 @@ class JwtSettings(BaseModel):
     algorithm: str = "HS256"
 
 
+class LlmSettings(BaseModel):
+    provider: Literal["deepseek", "openai", "tongyi", "volc", "mock"] = "deepseek"
+    # 从环境变量 EIRA_LLM__API_KEY 注入，默认空串（切勿在源码硬编码密钥）
+    api_key: str = ""
+    api_base: str = "https://api.deepseek.com"
+    model: str = "deepseek-chat"
+    max_tokens: int = 2048
+    temperature: float = 0.7
+    max_retries: int = 3
+    request_timeout: int = 60
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="EIRA_",
@@ -45,6 +57,7 @@ class Settings(BaseSettings):
     redis: RedisSettings = RedisSettings()
     oss: OssSettings = OssSettings()
     jwt: JwtSettings = JwtSettings()
+    llm: LlmSettings = LlmSettings()
 
 
 @lru_cache

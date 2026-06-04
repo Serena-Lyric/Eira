@@ -1,0 +1,30 @@
+# LLM pricing per 1M tokens (USD) — used for cost estimation in logs.
+# Updated: 2026-06-03
+
+providers:
+  deepseek:
+    models:
+      deepseek-chat:
+        input: 0.27   # $0.27 per 1M input tokens
+        output: 1.10  # $1.10 per 1M output tokens
+  openai:
+    models:
+      gpt-4o:
+        input: 2.50
+        output: 10.00
+      gpt-4o-mini:
+        input: 0.15
+        output: 0.60
+  tongyi:
+    models:
+      qwen-turbo:
+        input: 0.40
+        output: 0.40
+      qwen-plus:
+        input: 0.80
+        output: 0.80
+  volc:
+    models:
+      doubao-pro-32k:
+        input: 0.10
+        output: 0.10

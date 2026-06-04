@@ -1,19 +1,54 @@
 import { ref } from 'vue';
 
 export function useActionParser() {
-  // Map string tags to Live2D motion groups (e.g. from Hiyori's motion data)
+  /**
+   * Map action tags → Live2D motion groups.
+   *
+   * Available motion groups (model-dependent):
+   *   hiyori_pro_zh: Idle, Flick, FlickDown, FlickUp, Tap, Tap@Body, Flick@Body
+   *   mao_pro_zh:    Idle, "" (default group with mtn_02-04, special_01-02)
+   *
+   * The Live2D controller will try the primary group, then fall back
+   * through Tap@Body → Tap → Idle if the group isn't available.
+   */
   const motionMap: Record<string, string> = {
-    '[wave]': 'TapBody',
-    '[happy]': 'TapBody',
-    '[nod]': 'Idle',
+    '[wave]': 'Flick',
+    '[happy]': 'Tap',
+    '[nod]': 'FlickDown',
+    '[greet]': 'FlickUp',
+    '[tap]': 'Tap@Body',
+    '[idle]': 'Idle',
   };
 
+  /**
+   * Parse an action tag or motion group name and trigger the Live2D motion.
+   *
+   * Accepts both forms:
+   *   - Raw tags: 'wave', 'nod', 'happy', '[wave]', '[nod]', '[happy]'
+   *   - Motion group names: 'Tap@Body', 'Idle', 'Flick' (passed through)
+   */
   function parseAndTrigger(actionTag: string) {
-    const motionGroup = motionMap[actionTag];
+    let motionGroup: string | null = null;
+
+    // Normalize: strip brackets if present
+    const normalized = actionTag.replace(/[\[\]]/g, '');
+
+    // Known motion groups (used directly)
+    const knownGroups = new Set([
+      'Idle', 'Flick', 'FlickDown', 'FlickUp', 'Tap', 'Tap@Body', 'Flick@Body',
+    ]);
+
+    if (knownGroups.has(actionTag)) {
+      motionGroup = actionTag;
+    } else if (knownGroups.has(normalized)) {
+      motionGroup = normalized;
+    } else {
+      // Try tag lookup: 'wave' → '[wave]' → 'Flick'
+      const withBrackets = `[${normalized}]`;
+      motionGroup = motionMap[withBrackets] || motionMap[actionTag] || null;
+    }
+
     if (motionGroup) {
-      // In a real app we would fire an event here that the Live2DController listens to,
-      // or export a global event bus.
-      // For now, we dispatch a custom DOM event so the UI component can catch it.
       const event = new CustomEvent('live2d:motion', {
         detail: { group: motionGroup }
       });
@@ -21,13 +56,16 @@ export function useActionParser() {
     }
   }
 
-  // Optional: Function to strip tags out of raw text stream if the backend doesn't do it cleanly
-  function stripTags(text: string) {
-    return text.replace(/\[.*?\]/g, '');
+  /**
+   * Strip action tags from display text.
+   * Removes all bracket-delimited tags: [wave], [nod], etc.
+   */
+  function stripTags(text: string): string {
+    return text.replace(/\[.*?\]/g, '').trim();
   }
 
   return {
     parseAndTrigger,
-    stripTags
+    stripTags,
   };
 }

@@ -14,8 +14,6 @@
     "@vueuse/motion": "^3.0.3",
     "axios": "^1.7.0",
     "pinia": "^2.1.0",
-    "pixi-live2d-display": "^0.4",
-    "pixi.js": "^7",
     "vue": "^3.4.0",
     "vue-router": "^4.3.0"
   },

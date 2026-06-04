@@ -5,11 +5,17 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+.coverage.*
 
 # node
 node_modules/
 dist/
 .vite/
+
+# IDE
+.idea/
+.vscode/
 
 # env & secrets
 .env
