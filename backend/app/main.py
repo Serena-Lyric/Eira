@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from app.core.logging import configure_logging
-from app.api.rest import system, auth, conversations, voice, feedback, user, persona_config, stats, documents
+from app.api.rest import system, auth, conversations, voice, feedback, user, persona_config, stats, documents, assets
 from app.api.ws import chat as ws_chat
 from app.api.ws import voice as ws_voice
 
@@ -18,6 +18,7 @@ def create_app() -> FastAPI:
     app.include_router(persona_config.router)
     app.include_router(stats.router)
     app.include_router(documents.router)
+    app.include_router(assets.router)
     app.include_router(ws_chat.router)
     app.include_router(ws_voice.router)
     return app
