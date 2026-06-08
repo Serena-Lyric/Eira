@@ -1,4 +1,4 @@
-"""WebSocket endpoint /ws/voice — voice-driven chat with ASR + LLM streaming."""
+"""WebSocket endpoint /ws/voice — voice-driven chat with ASR + LLM + TTS streaming."""
 
 from __future__ import annotations
 
@@ -16,10 +16,12 @@ from app.capabilities.asr.base import BaseASRProvider
 from app.capabilities.asr.factory import create_asr_provider
 from app.capabilities.llm.base import BaseLLMProvider
 from app.capabilities.llm.factory import create_llm_provider
+from app.capabilities.tts.base import BaseTTSProvider
+from app.capabilities.tts.factory import create_tts_provider
 from app.orchestrator.state import ChatState
 from app.orchestrator.graph import build_graph
 from app.orchestrator.nodes import safety_in, safety_out
-from app.orchestrator.nodes.llm_call import llm_call as _llm_call_node
+from app.orchestrator.sentence_splitter import SentenceSplitter
 
 from .messages import (
     TokenOut,
@@ -28,6 +30,7 @@ from .messages import (
     strip_action_tags,
     ACTION_TAG_MAP,
 )
+from .audio_pump import AudioPump
 from .voice_messages import (
     VoiceStartIn,
     VoiceEndIn,
@@ -78,6 +81,8 @@ async def websocket_voice(
     settings = get_settings()
     asr_provider = create_asr_provider(settings.asr)
     llm_provider = create_llm_provider(settings.llm)
+    tts_provider = create_tts_provider(settings.tts)
+    audio_pump = AudioPump(ws)
 
     # State for the current voice session
     audio_buffer: list[bytes] = []
@@ -110,7 +115,7 @@ async def websocket_voice(
         return full_text or last_partial
 
     async def run_orchestrator(text: str) -> None:
-        """Run the orchestrator graph and stream results."""
+        """Run the orchestrator graph and stream results with TTS audio."""
         t0 = time.perf_counter()
 
         clean_text = strip_action_tags(text)
@@ -132,7 +137,7 @@ async def websocket_voice(
 
             full_text: str = result.llm_text
 
-            # Emit action tags
+            # Emit action tags first (before sentence streaming)
             tags_found = extract_action_tags(full_text)
             for tag in tags_found:
                 if cancel_event.is_set():
@@ -141,16 +146,44 @@ async def websocket_voice(
                 await ws.send_json(ActionOut(tag=motion).model_dump())
                 await asyncio.sleep(0.05)
 
-            # Stream text tokens
+            # Use sentence splitter for TTS-friendly chunking
+            splitter = SentenceSplitter(min_chars=6)
             display_text = strip_action_tags(full_text)
-            chunk_size = 2
-            for i in range(0, len(display_text), chunk_size):
-                if cancel_event.is_set():
-                    return
-                chunk = display_text[i : i + chunk_size]
-                if chunk:
-                    await ws.send_json(TokenOut(text=chunk).model_dump())
-                    await asyncio.sleep(0.01)
+            sentences = splitter.feed(display_text)
+            remaining = splitter.flush()
+            all_sentences = sentences + remaining
+
+            # Stream text tokens alongside TTS audio
+            audio_pump.reset()
+
+            if all_sentences:
+                # Send TTS audio for each sentence via binary frames
+                for sentence in all_sentences:
+                    if cancel_event.is_set():
+                        return
+
+                    # Stream TTS audio as binary frames
+                    await audio_pump.stream_and_push(
+                        tts_provider.stream(sentence, voice=settings.tts.voice)
+                    )
+
+                    # Also send text token frame for subtitle display
+                    await ws.send_json(TokenOut(text=sentence).model_dump())
+
+                    if cancel_event.is_set():
+                        return
+            else:
+                # Fallback: stream text in small chunks if no sentence split
+                chunk_size = 2
+                for i in range(0, len(display_text), chunk_size):
+                    if cancel_event.is_set():
+                        return
+                    chunk = display_text[i : i + chunk_size]
+                    if chunk:
+                        await ws.send_json(TokenOut(text=chunk).model_dump())
+                        await asyncio.sleep(0.01)
+
+            audio_pump.flush()
 
             latency_ms = (time.perf_counter() - t0) * 1000
             await ws.send_json(
@@ -215,6 +248,7 @@ async def websocket_voice(
 
             elif msg_type == "voice.barge_in":
                 cancel_event.set()
+                audio_pump.cancel()
                 asr_active = False
                 audio_buffer.clear()
                 logger.info("ws.voice.barge_in", user_id=user_id)
@@ -237,3 +271,4 @@ async def websocket_voice(
             pass
     finally:
         await asr_provider.close()
+        await tts_provider.close()
