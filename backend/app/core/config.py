@@ -45,6 +45,44 @@ class LlmSettings(BaseModel):
     request_timeout: int = 60
 
 
+class EmbeddingSettings(BaseModel):
+    provider: Literal["openai", "mock"] = "openai"
+    api_key: str = ""
+    api_base: str = "https://api.openai.com"
+    model: str = "text-embedding-3-small"
+    dimensions: int = 1536
+    batch_size: int = 64
+    max_retries: int = 3
+    request_timeout: int = 30
+
+
+class AsrSettings(BaseModel):
+    provider: Literal["aliyun_nls", "xunfei", "mock"] = "mock"
+    api_key: str = ""
+    app_id: str = ""
+    api_base: str = ""
+    request_timeout: int = 30
+    heartbeat_interval: int = 5
+
+
+class TtsSettings(BaseModel):
+    provider: Literal["aliyun_nls", "azure", "mock"] = "mock"
+    api_key: str = ""
+    api_base: str = ""
+    voice: str = "default"
+    sample_rate: int = 24000
+    format: str = "opus"
+    request_timeout: int = 30
+
+
+class SearchSettings(BaseModel):
+    provider: Literal["tavily", "mock"] = "tavily"
+    api_key: str = ""
+    api_base: str = "https://api.tavily.com/search"
+    daily_limit: int = 100
+    request_timeout: int = 15
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="EIRA_",
@@ -58,6 +96,10 @@ class Settings(BaseSettings):
     oss: OssSettings = OssSettings()
     jwt: JwtSettings = JwtSettings()
     llm: LlmSettings = LlmSettings()
+    asr: AsrSettings = AsrSettings()
+    tts: TtsSettings = TtsSettings()
+    embedding: EmbeddingSettings = EmbeddingSettings()
+    search: SearchSettings = SearchSettings()
 
 
 @lru_cache
