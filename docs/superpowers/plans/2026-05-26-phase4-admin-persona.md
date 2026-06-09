@@ -211,3 +211,5 @@ Phase 4 完成 ⇔ G-4.1 / 4.2 / 4.3 / 4.4 全部 passed。MVP + 后台运营基
 - Admin 布局无侧边栏导航（当前空壳为最终形态，不回退到原计划的三栏布局）。
 - Dashboard 使用手写 SVG 图表（不引入 ECharts，不回退）。
 - 角色卡编辑器 UI（PersonaEditor/PersonaPreview）已内联实现于 Dashboard.vue + Content/Personas.vue 中。
+
+## Handoff: docs/superpowers/handoff/2026-06-08-phase4-handoff.md

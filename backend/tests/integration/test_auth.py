@@ -1,3 +1,4 @@
+import uuid
 import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
@@ -5,12 +6,13 @@ from app.main import app
 
 @pytest.mark.asyncio
 async def test_register_login_refresh_flow():
+    email = f"test-{uuid.uuid4().hex[:8]}@example.com"
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         r = await c.post(
             "/auth/register",
             json={
-                "email": "u1@example.com",
+                "email": email,
                 "password": "Passw0rd!",
                 "display_name": "U1",
             },
@@ -19,7 +21,7 @@ async def test_register_login_refresh_flow():
 
         r = await c.post(
             "/auth/login",
-            json={"email": "u1@example.com", "password": "Passw0rd!"},
+            json={"email": email, "password": "Passw0rd!"},
         )
         assert r.status_code == 200
         tokens = r.json()
@@ -30,7 +32,7 @@ async def test_register_login_refresh_flow():
             headers={"Authorization": f"Bearer {tokens['access_token']}"},
         )
         assert r.status_code == 200
-        assert r.json()["email"] == "u1@example.com"
+        assert r.json()["email"] == email
 
         r = await c.post(
             "/auth/refresh", json={"refresh_token": tokens["refresh_token"]}

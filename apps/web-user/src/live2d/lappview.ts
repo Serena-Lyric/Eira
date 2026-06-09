@@ -1,0 +1,279 @@
+// @ts-nocheck
+/**
+ * Copyright(c) Live2D Inc. All rights reserved.
+ *
+ * Use of this source code is governed by the Live2D Open Software license
+ * that can be found at https://www.live2d.com/eula/live2d-open-software-license-agreement_en.html.
+ */
+
+import { CubismMatrix44 } from '@framework/math/cubismmatrix44';
+import { CubismViewMatrix } from '@framework/math/cubismviewmatrix';
+
+import * as LAppDefine from './lappdefine';
+import { LAppPal } from './lapppal';
+import { TouchManager } from './touchmanager';
+import { LAppSubdelegate } from './lappsubdelegate';
+
+/**
+ * 描画クラス。
+ */
+export class LAppView {
+  /**
+   * コンストラクタ
+   */
+  public constructor() {
+    this._programId = null;
+
+    // タッチ関係のイベント管理
+    this._touchManager = new TouchManager();
+
+    // デバイス座標からスクリーン座標に変換するための
+    this._deviceToScreen = new CubismMatrix44();
+
+    // 画面の表示の拡大縮小や移動の変換を行う行列
+    this._viewMatrix = new CubismViewMatrix();
+  }
+
+  /**
+   * 初期化する。
+   */
+  public initialize(subdelegate: LAppSubdelegate): void {
+    this._subdelegate = subdelegate;
+    const { width, height } = subdelegate.getCanvas();
+
+    const ratio: number = width / height;
+    const left: number = -ratio;
+    const right: number = ratio;
+    const bottom: number = LAppDefine.ViewLogicalLeft;
+    const top: number = LAppDefine.ViewLogicalRight;
+
+    this._viewMatrix.setScreenRect(left, right, bottom, top); // デバイスに対応する画面の範囲。 Xの左端、Xの右端、Yの下端、Yの上端
+    this._viewMatrix.scale(LAppDefine.ViewScale, LAppDefine.ViewScale);
+
+    this._deviceToScreen.loadIdentity();
+    if (width > height) {
+      const screenW: number = Math.abs(right - left);
+      this._deviceToScreen.scaleRelative(screenW / width, -screenW / width);
+    } else {
+      const screenH: number = Math.abs(top - bottom);
+      this._deviceToScreen.scaleRelative(screenH / height, -screenH / height);
+    }
+    this._deviceToScreen.translateRelative(-width * 0.5, -height * 0.5);
+
+    // 表示範囲の設定
+    this._viewMatrix.setMaxScale(LAppDefine.ViewMaxScale); // 限界拡張率
+    this._viewMatrix.setMinScale(LAppDefine.ViewMinScale); // 限界縮小率
+
+    // 表示できる最大範囲
+    // Eira: SDK の adjustTranslate 内 clamp は scale 依存バグがあるため無効化し、
+    // panBy で screenRect を絶対境界として直接 clamp する。
+    this._viewMatrix.setMaxScreenRect(-1e9, 1e9, -1e9, 1e9);
+  }
+
+  /**
+   * 解放する
+   */
+  public release(): void {
+    this._viewMatrix = null;
+    this._touchManager = null;
+    this._deviceToScreen = null;
+
+    // 背景・歯車スプライトは Vue 側 UI で描画するため未使用。
+
+    if (this._programId) {
+      this._subdelegate.getGlManager().getGl().deleteProgram(this._programId);
+    }
+    this._programId = null;
+  }
+
+  /**
+   * 描画する。
+   * 背景・歯車スプライトは Vue 側で描画するため、ここでは Live2D モデルのみ更新する。
+   */
+  public render(): void {
+    const lapplive2dmanager = this._subdelegate.getLive2DManager();
+    if (lapplive2dmanager != null) {
+      lapplive2dmanager.setViewMatrix(this._viewMatrix);
+
+      lapplive2dmanager.onUpdate();
+    }
+  }
+
+  /**
+   * 画像の初期化を行う。
+   * 背景・歯車スプライトは Vue 側 UI で描画するため、ここでは何も読み込まない。
+   */
+  public initializeSprite(): void {
+    // no-op: スプライト描画は使用しない。
+  }
+
+  /**
+   * タッチされた時に呼ばれる。
+   *
+   * @param pointX スクリーンX座標
+   * @param pointY スクリーンY座標
+   */
+  public onTouchesBegan(pointX: number, pointY: number): void {
+    this._touchManager.touchesBegan(
+      pointX * window.devicePixelRatio,
+      pointY * window.devicePixelRatio
+    );
+  }
+
+  /**
+   * タッチしているときにポインタが動いたら呼ばれる。
+   *
+   * @param pointX スクリーンX座標
+   * @param pointY スクリーンY座標
+   */
+  public onTouchesMoved(pointX: number, pointY: number): void {
+    const posX = pointX * window.devicePixelRatio;
+    const posY = pointY * window.devicePixelRatio;
+
+    const lapplive2dmanager = this._subdelegate.getLive2DManager();
+
+    const viewX: number = this.transformViewX(this._touchManager.getX());
+    const viewY: number = this.transformViewY(this._touchManager.getY());
+
+    this._touchManager.touchesMoved(posX, posY);
+
+    lapplive2dmanager.onDrag(viewX, viewY);
+  }
+
+  /**
+   * タッチが終了したら呼ばれる。
+   *
+   * @param pointX スクリーンX座標
+   * @param pointY スクリーンY座標
+   */
+  public onTouchesEnded(pointX: number, pointY: number): void {
+    const posX = pointX * window.devicePixelRatio;
+    const posY = pointY * window.devicePixelRatio;
+
+    const lapplive2dmanager = this._subdelegate.getLive2DManager();
+
+    // タッチ終了
+    lapplive2dmanager.onDrag(0.0, 0.0);
+
+    // シングルタップ
+    const x: number = this.transformViewX(posX);
+    const y: number = this.transformViewY(posY);
+
+    if (LAppDefine.DebugTouchLogEnable) {
+      LAppPal.printMessage(`[APP]touchesEnded x: ${x} y: ${y}`);
+    }
+    lapplive2dmanager.onTap(x, y);
+  }
+
+  /**
+   * X座標をView座標に変換する。
+   *
+   * @param deviceX デバイスX座標
+   */
+  public transformViewX(deviceX: number): number {
+    const screenX: number = this._deviceToScreen.transformX(deviceX); // 論理座標変換した座標を取得。
+    return this._viewMatrix.invertTransformX(screenX); // 拡大、縮小、移動後の値。
+  }
+
+  /**
+   * Y座標をView座標に変換する。
+   *
+   * @param deviceY デバイスY座標
+   */
+  public transformViewY(deviceY: number): number {
+    const screenY: number = this._deviceToScreen.transformY(deviceY); // 論理座標変換した座標を取得。
+    return this._viewMatrix.invertTransformY(screenY);
+  }
+
+  /**
+   * X座標をScreen座標に変換する。
+   * @param deviceX デバイスX座標
+   */
+  public transformScreenX(deviceX: number): number {
+    return this._deviceToScreen.transformX(deviceX);
+  }
+
+  /**
+   * Y座標をScreen座標に変換する。
+   *
+   * @param deviceY デバイスY座標
+   */
+  public transformScreenY(deviceY: number): number {
+    return this._deviceToScreen.transformY(deviceY);
+  }
+
+  /**
+   * Eira: ホイールズーム。canvas 上のデバイス座標(cx, cy)を中心に拡大縮小する。
+   */
+  public zoomAt(deviceX: number, deviceY: number, factor: number): void {
+    const sx = this._deviceToScreen.transformX(deviceX * window.devicePixelRatio);
+    const sy = this._deviceToScreen.transformY(deviceY * window.devicePixelRatio);
+    this._viewMatrix.adjustScale(sx, sy, factor);
+  }
+
+  /**
+   * Eira: モデル自身の中心を不動点として拡大縮小する。
+   * モデル中心(ビュー座標 0,0)は viewMatrix により screen 上の (_tr[12], _tr[13]) に投影される。
+   * その点を adjustScale の中心に渡すことで、モデルがドラッグで画面端に寄っていても
+   * 縮小・拡大時にモデルが画面外へ流れていかない（中心が固定される）。
+   * 缩放後、念のため画面境界 clamp を行う。
+   */
+  public zoomByCenter(factor: number): void {
+    const tr = this._viewMatrix.getArray();
+    this._viewMatrix.adjustScale(tr[12], tr[13], factor);
+    // 数値精度によるドリフト防止：缩放後に再 clamp
+    const margin = 1.0;
+    const tr2 = this._viewMatrix.getArray();
+    const sl = this._viewMatrix.getScreenLeft() - margin;
+    const sr = this._viewMatrix.getScreenRight() + margin;
+    const sb = this._viewMatrix.getScreenBottom() - margin;
+    const st = this._viewMatrix.getScreenTop() + margin;
+    if (tr2[12] < sl) tr2[12] = sl;
+    if (tr2[12] > sr) tr2[12] = sr;
+    if (tr2[13] < sb) tr2[13] = sb;
+    if (tr2[13] > st) tr2[13] = st;
+  }
+
+  /**
+   * Eira: ドラッグによる平行移動。デバイス座標の移動量(dx, dy)を適用する。
+   * 現在のビュー拡大率を考慮し、ズーム時もドラッグ感度が一定になるよう補正。
+   * 移動後、モデル中心が screenRect を超えないよう直接 clamp する。
+   * （SDK の adjustTranslate 内 clamp は scale 依存バグがあるため不使用）
+   */
+  public panBy(deviceDX: number, deviceDY: number): void {
+    // デバイス移動量をスクリーン座標スケールへ変換（_deviceToScreen の拡大率を利用）
+    const scaleX = this._deviceToScreen.getArray()[0];
+    const scaleY = this._deviceToScreen.getArray()[5];
+    // 現在のビュー拡大率で割ることで、ズーム時もドラッグ変位が画面と一致
+    const viewScale = Math.abs(this._viewMatrix.getArray()[0]) || 1.0;
+    this._viewMatrix.adjustTranslate(
+      (deviceDX * window.devicePixelRatio * scaleX) / viewScale,
+      (deviceDY * window.devicePixelRatio * scaleY) / viewScale
+    );
+    // モデル中心の画面位置を screenRect + margin 内に clamp。
+    // margin=0 だとモデルが画面端で完全に止まり空白が大きく出るため、
+    // 1 画面単位の余裕を持たせて自然な可動域にする。
+    const margin = 1.0;
+    const tr = this._viewMatrix.getArray();
+    const sl = this._viewMatrix.getScreenLeft() - margin;
+    const sr = this._viewMatrix.getScreenRight() + margin;
+    const sb = this._viewMatrix.getScreenBottom() - margin;
+    const st = this._viewMatrix.getScreenTop() + margin;
+    if (tr[12] < sl) tr[12] = sl;
+    if (tr[12] > sr) tr[12] = sr;
+    if (tr[13] < sb) tr[13] = sb;
+    if (tr[13] > st) tr[13] = st;
+  }
+
+  public getViewMatrix(): CubismViewMatrix {
+    return this._viewMatrix;
+  }
+
+  _touchManager: TouchManager; // タッチマネージャー
+  _deviceToScreen: CubismMatrix44; // デバイスからスクリーンへの行列
+  _viewMatrix: CubismViewMatrix; // viewMatrix
+  _programId: WebGLProgram; // シェーダID
+  _changeModel: boolean; // モデル切り替えフラグ
+  _isClick: boolean; // クリック中
+  private _subdelegate: LAppSubdelegate;
+}

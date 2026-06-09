@@ -1,0 +1,10 @@
+{
+    "Type": "Live2D Expression",
+    "Parameters": [
+        {
+            "Id": "give_me_a_chair",
+            "Value": "1",
+            "Blend": "Add"
+        }
+    ]
+}

@@ -1,3 +1,7 @@
+<!--
+  @deprecated — 此组件当前未被引用。Chat.vue 已将快捷问题 UI 内联实现。
+  保留此文件供未来组件化重构时参考。
+-->
 <script setup lang="ts">
 import { GlassButton } from '@eira/ui-shared';
 
