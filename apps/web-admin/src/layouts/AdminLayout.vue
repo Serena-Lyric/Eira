@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { NConfigProvider, NGlobalStyle } from 'naive-ui';
+import { NConfigProvider, NGlobalStyle, NMessageProvider } from 'naive-ui';
 import { RouterView } from 'vue-router';
 </script>
 
 <template>
   <NConfigProvider>
     <NGlobalStyle />
-    <RouterView />
+    <NMessageProvider>
+      <RouterView />
+    </NMessageProvider>
   </NConfigProvider>
 </template>
 

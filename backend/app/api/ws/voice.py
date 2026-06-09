@@ -15,7 +15,10 @@ from app.core.config import get_settings
 from app.capabilities.asr.base import BaseASRProvider
 from app.capabilities.asr.factory import create_asr_provider
 from app.capabilities.llm.base import BaseLLMProvider
-from app.capabilities.llm.factory import create_llm_provider
+from app.capabilities.llm.provider_registry import (
+    get_provider_registry,
+    get_effective_llm_settings,
+)
 from app.capabilities.tts.base import BaseTTSProvider
 from app.capabilities.tts.factory import create_tts_provider
 from app.orchestrator.state import ChatState
@@ -80,7 +83,8 @@ async def websocket_voice(
 
     settings = get_settings()
     asr_provider = create_asr_provider(settings.asr)
-    llm_provider = create_llm_provider(settings.llm)
+    llm_settings = await get_effective_llm_settings()
+    llm_provider = await get_provider_registry().get(llm_settings)
     tts_provider = create_tts_provider(settings.tts)
     audio_pump = AudioPump(ws)
 
@@ -204,6 +208,14 @@ async def websocket_voice(
         while True:
             raw = await ws.receive()
 
+            # Per-connection message rate limit (§7.4)
+            from app.core.rate_limit import get_ws_limiter
+            if not await get_ws_limiter().check(str(user_id), "ws_voice"):
+                await ws.send_json(
+                    VoiceErrorOut(code="rate_limited", detail="消息过于频繁，请稍后再试").model_dump()
+                )
+                continue
+
             # Handle binary (audio) frames
             if "bytes" in raw:
                 audio_chunk = raw["bytes"]
@@ -267,8 +279,8 @@ async def websocket_voice(
         logger.error("ws.voice.fatal", user_id=user_id, error=str(exc))
         try:
             await ws.close(code=4000)
-        except Exception:
-            pass
+        except Exception as exc2:
+            logger.debug("ws.close_failed", user_id=user_id, error=str(exc2))
     finally:
         await asr_provider.close()
         await tts_provider.close()

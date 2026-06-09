@@ -1,3 +1,7 @@
+<!--
+  @deprecated — 此组件当前未被引用。摄像头逻辑已直接集成到 Chat.vue 的 cameraMode watcher 中。
+  保留此文件供未来组件化重构时参考。
+-->
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 

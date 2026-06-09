@@ -74,3 +74,8 @@ class BaseLLMProvider(ABC):
     ) -> LlmResult:
         """Non-streaming completion — collects stream internally."""
         ...
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Release any resources held by the provider (connection pools, etc.)."""
+        ...

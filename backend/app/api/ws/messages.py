@@ -55,6 +55,7 @@ class DoneOut(BaseModel):
     message_id: int | None = None
     latency_ms: float | None = None
     tokens: dict | None = None  # {"prompt": N, "completion": M}
+    sources: list[dict] | None = None  # knowledge sources for citation UI
 
 
 class ErrorOut(BaseModel):

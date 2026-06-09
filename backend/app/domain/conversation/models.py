@@ -39,3 +39,23 @@ class ChatMessage(Base):
     )
 
     session: Mapped["ChatSession"] = relationship("ChatSession", back_populates="messages")
+
+
+class Feedback(Base):
+    """用户提交的服务建议 / 反馈，Admin 面板可查看和回复。"""
+
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    reply_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    replied: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    replied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

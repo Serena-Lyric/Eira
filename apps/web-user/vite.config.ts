@@ -14,6 +14,6 @@ export default defineConfig({
       "@framework": path.resolve(__dirname, "src/live2d-framework"),
     },
   },
-  server: { port: 5173, proxy: { "/api": "http://localhost:8000" } },
+  server: { port: 5173, proxy: { "/api": { target: "http://localhost:8000", rewrite: (path: string) => path.replace(/^\/api/, "") } } },
   test: { environment: "happy-dom", globals: true },
 })

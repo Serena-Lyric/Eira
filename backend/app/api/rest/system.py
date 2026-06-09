@@ -1,9 +1,12 @@
+import structlog
 from fastapi import APIRouter, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 from app.infra.db import get_engine
 from app.infra.redis import get_redis
 from app.infra.oss import get_oss_client
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 
@@ -25,18 +28,18 @@ async def readyz(response: Response) -> dict:
         async with get_engine().connect() as conn:
             await conn.execute(text("SELECT 1"))
         out["db"] = "up"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("health_check.failed", component="db", error=str(exc))
     try:
         if await get_redis().ping():  # type: ignore[misc]
             out["redis"] = "up"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("health_check.failed", component="redis", error=str(exc))
     try:
         get_oss_client().list_buckets()
         out["oss"] = "up"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("health_check.failed", component="oss", error=str(exc))
     if "down" in out.values():
         response.status_code = 503
     return out

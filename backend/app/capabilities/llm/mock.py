@@ -36,6 +36,10 @@ class MockProvider(BaseLLMProvider):
                 finish_reason="stop" if i + chars_per_chunk >= len(text) else None,
             )
 
+    async def close(self) -> None:
+        """Mock provider has no resources to release."""
+        pass
+
     async def complete(
         self, messages: list[dict[str, Any]], **kwargs: Any
     ) -> LlmResult:

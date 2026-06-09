@@ -1,3 +1,7 @@
+<!--
+  @deprecated — 此组件当前未被引用。Live2D 渲染已改用 useLive2DController composable 自管。
+  保留此文件供未来组件化重构时参考。
+-->
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 

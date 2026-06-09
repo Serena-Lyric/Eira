@@ -40,9 +40,8 @@ export function useChatSession() {
   function connect() {
     const token = getAccessToken();
     if (!token) {
-      // 🔒 TODO: Restore redirect when auth is implemented (handoff 2026-06-04)
-      // window.location.href = '/login';
-      console.warn('[useChatSession] No access token — WebSocket disabled (testing mode)');
+      console.warn('[useChatSession] No access token — redirecting to login');
+      window.location.href = '/login';
       return;
     }
 
@@ -50,11 +49,17 @@ export function useChatSession() {
     ws = useWebSocket(wsUrl);
     ws.connect();
 
-    // Poll for connection
+    // Poll for connection (clean up after connected or timeout)
+    let attempts = 0;
+    const maxAttempts = 50; // 10 seconds at 200ms intervals
     const checkInterval = setInterval(() => {
+      attempts++;
       if (ws && ws.isConnected.value) {
         isConnected.value = true;
         clearInterval(checkInterval);
+      } else if (attempts >= maxAttempts) {
+        clearInterval(checkInterval);
+        console.warn('[useChatSession] WebSocket connection timeout');
       }
     }, 200);
 
@@ -103,6 +108,15 @@ export function useChatSession() {
 
           case 'done':
             console.log('[useChatSession] Turn complete:', data);
+            break;
+
+          case 'quick_questions':
+            // 后端推送快捷问题列表
+            if (data.questions && Array.isArray(data.questions)) {
+              window.dispatchEvent(
+                new CustomEvent('eira:quick-questions', { detail: data.questions })
+              );
+            }
             break;
 
           case 'error':

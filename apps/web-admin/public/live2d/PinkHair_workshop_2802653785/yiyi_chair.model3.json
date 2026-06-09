@@ -1,0 +1,31 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "yiyi_chair.moc3",
+		"Textures": [
+			"yiyi_chair.4096/texture_00.png",
+			"yiyi_chair.4096/texture_01.png",
+			"yiyi_chair.4096/texture_02.png",
+			"yiyi_chair.4096/texture_03.png",
+			"yiyi_chair.4096/texture_04.png"
+		],
+		"Physics": "yiyi_chair.physics3.json"
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		},
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"Cat_eye_R",
+				"Cat_eye_L",
+				"ParamEyeROpen",
+				"ParamEyeLOpen"
+			]
+		}
+	]
+}

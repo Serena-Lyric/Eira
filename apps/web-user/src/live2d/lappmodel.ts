@@ -656,12 +656,15 @@ export class LAppModel extends CubismUserModel {
 
   /**
    * Eira: モデルを中央に配置する（Layout 未定義モデル向け）。
-   * width/height を設定してから中心を (0,0) に合わせる。
+   * @param width  ビュー幅に対するモデル横幅（既定 2.0 = 画面いっぱい）。
+   *               小さくすると余白ができ全身が収まりやすい。
+   * @param offsetY 中心の縦オフセット（ビュー座標、+で上 / -で下）。
+   *               頭が上に切れる場合は負値で下げる。
    */
-  public centerModel(): void {
+  public centerModel(width: number = 2.0, offsetY: number = 0.0): void {
     if (!this._modelMatrix) return;
-    this._modelMatrix.setWidth(2.0);
-    this._modelMatrix.setCenterPosition(0.0, 0.0);
+    this._modelMatrix.setWidth(width);
+    this._modelMatrix.setCenterPosition(0.0, offsetY);
   }
 
   /**

@@ -1,0 +1,415 @@
+
+{
+    "customName" : "yiyi_chair",
+    "iconPath"   : "yiyi_chair.png",
+    "bodyPhysics" : 0.9684668,
+    "useAnimBlend" : 0,
+    "modelPos"     : {
+        "x" : -0.280091345310211,
+        "y" : -6.42821979522705,
+        "z" : -0.800000011920929
+    },
+    "modelSize"    : {
+        "x" : 9.5,
+        "y" : 9.5,
+        "z" : 1.0
+    },
+    "modelAngle"   : {
+        "x" : 0.0,
+        "y" : 0.0,
+        "z" : -4.46236008428968E-05
+    },
+    "capsuleRadius" : 1.629452,
+    "capsuleHeight" : 9.665573,
+    "capsulePos"    : {
+        "x" : -0.240414321422577,
+        "y" : -0.903763771057129,
+        "z" : -1.79999995231628
+    },
+    "defaultAnimIndex" : -1,
+    "keys"             : [
+        {
+            "type" : 0,
+            "bindAction" : "-1",
+            "bindVirtualAction" : {
+                "Keys" : [
+                    256
+                ],
+                "actionName" : "",
+                "isGlobal"   : false,
+                "isApply"    : true
+            }
+        },
+        {
+            "type" : 1,
+            "bindAction" : "0",
+            "bindVirtualAction" : {
+                "Keys" : [
+                    257
+                ],
+                "actionName" : "Param",
+                "isGlobal"   : false,
+                "isApply"    : true
+            }
+        },
+        {
+            "type" : 1,
+            "bindAction" : "1",
+            "bindVirtualAction" : {
+                "Keys" : [
+                    258
+                ],
+                "actionName" : "me_ga_haato",
+                "isGlobal"   : false,
+                "isApply"    : true
+            }
+        },
+        {
+            "type" : 1,
+            "bindAction" : "2",
+            "bindVirtualAction" : {
+                "Keys" : [
+                    259
+                ],
+                "actionName" : "breath",
+                "isGlobal"   : false,
+                "isApply"    : true
+            }
+        },
+        {
+            "type" : 1,
+            "bindAction" : "3",
+            "bindVirtualAction" : {
+                "Keys" : [
+                    260
+                ],
+                "actionName" : "ase",
+                "isGlobal"   : false,
+                "isApply"    : true
+            }
+        },
+        {
+            "type" : 1,
+            "bindAction" : "4",
+            "bindVirtualAction" : {
+                "Keys" : [
+                    261
+                ],
+                "actionName" : "give_me_a_chair",
+                "isGlobal"   : false,
+                "isApply"    : true
+            }
+        },
+        {
+            "type" : 1,
+            "bindAction" : "5",
+            "bindVirtualAction" : {
+                "Keys" : [
+                    262
+                ],
+                "actionName" : "Cat_Position",
+                "isGlobal"   : false,
+                "isApply"    : true
+            }
+        },
+        {
+            "type" : 1,
+            "bindAction" : "6",
+            "bindVirtualAction" : {
+                "Keys" : [
+                    263
+                ],
+                "actionName" : "Cat_onoff",
+                "isGlobal"   : false,
+                "isApply"    : true
+            }
+        },
+        {
+            "type" : 1,
+            "bindAction" : "7",
+            "bindVirtualAction" : {
+                "Keys" : [
+                    264
+                ],
+                "actionName" : "Donut_onoff",
+                "isGlobal"   : false,
+                "isApply"    : true
+            }
+        }
+    ],
+    "useVoice"         : false,
+    "voiceParams"      : [
+        1,
+        1,
+        0.5,
+        0.3,
+        0.4,
+        0.1,
+        1,
+        -1,
+        0.4,
+        1
+    ],
+    "facialSettingMapV2" : {
+        "yaw" : {
+            "dataIndex" : 0,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamAngleX",
+                    "fMinValue" : -0.55,
+                    "fMaxValue" : 0.55,
+                    "pMinValue" : -30,
+                    "pMaxValue" : 30,
+                    "lerpValue" : 0.6
+                },
+                {
+                    "paramName" : "ParamBodyAngleX",
+                    "fMinValue" : -0.55,
+                    "fMaxValue" : 0.55,
+                    "pMinValue" : -10,
+                    "pMaxValue" : 10,
+                    "lerpValue" : 0.6
+                }
+            ]
+        },
+        "pitch" : {
+            "dataIndex" : 1,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamAngleY",
+                    "fMinValue" : -0.6142857,
+                    "fMaxValue" : 1,
+                    "pMinValue" : -30,
+                    "pMaxValue" : 30,
+                    "lerpValue" : 0.6
+                },
+                {
+                    "paramName" : "ParamBodyAngleY",
+                    "fMinValue" : -1,
+                    "fMaxValue" : 1,
+                    "pMinValue" : -10,
+                    "pMaxValue" : 10,
+                    "lerpValue" : 0.6
+                }
+            ]
+        },
+        "roll"  : {
+            "dataIndex" : 2,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamAngleZ",
+                    "fMinValue" : -1,
+                    "fMaxValue" : 1,
+                    "pMinValue" : -30,
+                    "pMaxValue" : 30,
+                    "lerpValue" : 0.6
+                },
+                {
+                    "paramName" : "ParamBodyAngleZ",
+                    "fMinValue" : -1,
+                    "fMaxValue" : 1,
+                    "pMinValue" : -10,
+                    "pMaxValue" : 10,
+                    "lerpValue" : 0.6
+                }
+            ]
+        },
+        "eyeL"  : {
+            "dataIndex" : 3,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamEyeLOpen",
+                    "fMinValue" : -0.5,
+                    "fMaxValue" : 0.5,
+                    "pMinValue" : 0,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.495
+                },
+                {
+                    "paramName" : "Cat_eye_R",
+                    "fMinValue" : -0.8,
+                    "fMaxValue" : 0.8,
+                    "pMinValue" : 0,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.7044231
+                }
+            ]
+        },
+        "eyeR"  : {
+            "dataIndex" : 4,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamEyeROpen",
+                    "fMinValue" : -0.5,
+                    "fMaxValue" : 0.5,
+                    "pMinValue" : 0,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.5026154
+                },
+                {
+                    "paramName" : "Cat_eye_L",
+                    "fMinValue" : -0.8,
+                    "fMaxValue" : 0.8,
+                    "pMinValue" : 0,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.7006154
+                }
+            ]
+        },
+        "browLY" : {
+            "dataIndex" : 5,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamBrowLY",
+                    "fMinValue" : -0.5,
+                    "fMaxValue" : 0.5,
+                    "pMinValue" : -1,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0
+                },
+                {
+                    "paramName" : "ParamBrowLAngle",
+                    "fMinValue" : -0.5,
+                    "fMaxValue" : 0.5,
+                    "pMinValue" : -1,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.5
+                }
+            ]
+        },
+        "browRY" : {
+            "dataIndex" : 6,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamBrowRY",
+                    "fMinValue" : -0.7,
+                    "fMaxValue" : 0.5,
+                    "pMinValue" : -1,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0
+                },
+                {
+                    "paramName" : "ParamBrowRAngle",
+                    "fMinValue" : -0.5,
+                    "fMaxValue" : 0.5,
+                    "pMinValue" : -1,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.5
+                }
+            ]
+        },
+        "mouthY" : {
+            "dataIndex" : 7,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamMouthOpenY",
+                    "fMinValue" : -1,
+                    "fMaxValue" : -0.007142842,
+                    "pMinValue" : 0,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.8072308
+                }
+            ]
+        },
+        "mouthX" : {
+            "dataIndex" : 8,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamMouthForm",
+                    "fMinValue" : -1,
+                    "fMaxValue" : 0.9,
+                    "pMinValue" : -1,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.808423
+                }
+            ]
+        },
+        "eyeballX" : {
+            "dataIndex" : 9,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamEyeBallX",
+                    "fMinValue" : -0.4,
+                    "fMaxValue" : 0.4,
+                    "pMinValue" : -1,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.5
+                }
+            ]
+        },
+        "eyeballY" : {
+            "dataIndex" : 10,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamEyeBallY",
+                    "fMinValue" : -0.5495239,
+                    "fMaxValue" : 0.5361906,
+                    "pMinValue" : -1,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.5
+                }
+            ]
+        },
+        "browform" : {
+            "dataIndex" : 11,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "ParamBrowLForm",
+                    "fMinValue" : -1,
+                    "fMaxValue" : 0.7714286,
+                    "pMinValue" : -1,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.5
+                },
+                {
+                    "paramName" : "ParamBrowRForm",
+                    "fMinValue" : -1,
+                    "fMaxValue" : 1,
+                    "pMinValue" : -1,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.5
+                }
+            ]
+        },
+        "facesite" : {
+            "dataIndex" : 12,
+            "enableMapping" : true,
+            "paramSettingData" : [
+            ]
+        },
+        "facedistance" : {
+            "dataIndex" : 13,
+            "enableMapping" : true,
+            "paramSettingData" : [
+            ]
+        },
+        "tongue"       : {
+            "dataIndex" : 14,
+            "enableMapping" : true,
+            "paramSettingData" : [
+                {
+                    "paramName" : "tongue_out",
+                    "fMinValue" : -1,
+                    "fMaxValue" : 1,
+                    "pMinValue" : 0,
+                    "pMaxValue" : 1,
+                    "lerpValue" : 0.6
+                }
+            ]
+        }
+    },
+    "L2DName"            : "",
+    "mapIsGlobal"        : false
+}

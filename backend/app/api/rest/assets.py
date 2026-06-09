@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import structlog
 import uuid
 import zipfile
 from io import BytesIO
@@ -12,9 +13,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_db_session, get_current_user, require_admin
+from app.core.deps import get_db_session, get_current_user, require_admin, check_upload_rate_limit
 from app.domain.identity.models import User
 from app.domain.persona.quota import check_quota, get_quota_info, QUOTAS
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
@@ -129,6 +132,7 @@ async def upload_background(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
+    _rate: None = Depends(check_upload_rate_limit),
 ) -> AssetUploadOut:
     """Upload a background image. Max 10MB, JPG/PNG/WebP only."""
     # Validate
@@ -142,6 +146,11 @@ async def upload_background(
     content = await file.read()
     if len(content) > MAX_BG_SIZE:
         raise HTTPException(400, "图片文件过大（最大 10 MB）")
+
+    # Validate file header against declared MIME type
+    from app.core.file_validation import validate_magic
+    if not validate_magic(content, mime):
+        raise HTTPException(400, "文件内容与声明的格式不匹配")
 
     # Check quota
     within = await check_quota(user.id, "background")
@@ -230,8 +239,8 @@ async def delete_background(
         from app.infra.oss import get_oss_client
         oss = get_oss_client()
         oss.delete_object(Bucket="eira-backgrounds", Key=oss_key)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("oss.delete_failed", oss_key=oss_key, bucket="eira-backgrounds", error=str(exc))
 
     await db.execute(text("DELETE FROM assets WHERE id = :id"), {"id": asset_id})
     await db.commit()
@@ -246,6 +255,7 @@ async def upload_live2d_model(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
+    _rate: None = Depends(check_upload_rate_limit),
 ) -> AssetUploadOut:
     """Upload a Live2D model zip. Validates model3.json exists in archive."""
     if not file.filename:
@@ -258,6 +268,11 @@ async def upload_live2d_model(
     content = await file.read()
     if len(content) > MAX_MODEL_SIZE:
         raise HTTPException(400, "模型包过大（最大 200 MB）")
+
+    # Validate magic number — must be a real ZIP file
+    from app.core.file_validation import validate_magic
+    if not validate_magic(content, "application/zip"):
+        raise HTTPException(400, "文件不是有效的 zip 格式")
 
     # Validate zip structure — must contain model3.json
     try:
@@ -336,8 +351,8 @@ async def delete_live2d_model(
         from app.infra.oss import get_oss_client
         oss = get_oss_client()
         oss.delete_object(Bucket="eira-live2d", Key=oss_key)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("oss.delete_failed", oss_key=oss_key, bucket="eira-live2d", error=str(exc))
 
     await db.execute(text("DELETE FROM assets WHERE id = :id"), {"id": asset_id})
     await db.commit()

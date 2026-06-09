@@ -32,8 +32,20 @@ async def llm_call(state: ChatState, provider: BaseLLMProvider) -> dict:
     request_id = state.request_id or uuid.uuid4().hex[:12]
     t0 = time.perf_counter()
 
+    # Build system prompt with RAG context if available
+    system_content = state.persona_prompt or _SYSTEM_PROMPT
+
+    if state.retrieved_chunks:
+        context_text = "\n".join(state.retrieved_chunks)
+        system_content += (
+            "\n\n根据以下参考资料回答用户问题：\n"
+            f"<context>\n{context_text}\n</context>\n\n"
+            "如果参考资料不足以回答问题，请基于你的知识诚实回答，"
+            "并说明信息来源的局限性。"
+        )
+
     messages: list[dict] = [
-        {"role": "system", "content": state.persona_prompt or _SYSTEM_PROMPT},
+        {"role": "system", "content": system_content},
     ]
     # Append history (oldest first)
     for h in state.history:

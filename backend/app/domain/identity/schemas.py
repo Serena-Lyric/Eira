@@ -23,3 +23,22 @@ class UserOut(BaseModel):
     email: str
     display_name: str | None = None
     role: str
+
+
+class UserDetailOut(UserOut):
+    status: str
+    disabled: bool = False
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class PaginatedUsers(BaseModel):
+    items: list[UserOut]
+    total: int
+    page: int
+    page_size: int
+
+
+class UserPatchIn(BaseModel):
+    role: str | None = None
+    disabled: bool | None = None

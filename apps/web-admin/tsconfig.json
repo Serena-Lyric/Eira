@@ -5,12 +5,19 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "jsx": "preserve",
-    "jsxImportSource": "vue",
     "types": ["vite/client", "vitest/globals"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@framework/*": ["src/live2d-framework/*"]
+    }
   },
-  "include": ["src/**/*", "tests/**/*"]
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "public/live2d-core/live2dcubismcore.d.ts"
+  ]
 }

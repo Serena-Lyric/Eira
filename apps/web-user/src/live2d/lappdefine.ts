@@ -28,11 +28,12 @@ export const ViewLogicalRight = 1.0;
 export const ViewLogicalBottom = -1.0;
 export const ViewLogicalTop = 1.0;
 
-// Eira: 放宽可平移范围，允许把模型移到全屏任意位置（含屏幕外）
-export const ViewLogicalMaxLeft = -4.0;
-export const ViewLogicalMaxRight = 4.0;
-export const ViewLogicalMaxBottom = -4.0;
-export const ViewLogicalMaxTop = 4.0;
+// Eira: 平移可動域の旧固定値。現在は lappview.initialize で ratio に追従させて
+// 動的計算するため未使用（横長画面で横移動が死ぬのを防ぐ）。互換のため残置。
+export const ViewLogicalMaxLeft = -3.0;
+export const ViewLogicalMaxRight = 3.0;
+export const ViewLogicalMaxBottom = -3.0;
+export const ViewLogicalMaxTop = 3.0;
 
 // 相対パス
 export const ResourcesPath = '../../Resources/';

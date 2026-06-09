@@ -1,8 +1,10 @@
-"""Repository for chat sessions and messages."""
+"""Repository for chat sessions, messages, and user feedback."""
 
-from sqlalchemy import select, func
+from datetime import datetime, timezone
+
+from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from .models import ChatSession, ChatMessage
+from .models import ChatSession, ChatMessage, Feedback
 
 
 class ConversationRepository:
@@ -59,3 +61,43 @@ class ConversationRepository:
             .limit(limit)
         )
         return list((await self.session.execute(q)).scalars().all())
+
+
+class FeedbackRepository:
+    """用户服务建议 / 反馈的持久化操作。"""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def create(self, fb: Feedback) -> Feedback:
+        self.session.add(fb)
+        await self.session.flush()
+        return fb
+
+    async def get_by_id(self, feedback_id: int) -> Feedback | None:
+        return await self.session.get(Feedback, feedback_id)
+
+    async def list_all(
+        self, limit: int = 50, offset: int = 0
+    ) -> list[Feedback]:
+        """按创建时间倒序返回所有反馈。"""
+        q = (
+            select(Feedback)
+            .order_by(Feedback.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list((await self.session.execute(q)).scalars().all())
+
+    async def update_reply(
+        self, feedback_id: int, reply_text: str
+    ) -> Feedback | None:
+        """为指定反馈保存管理员回复，标记为已回复。"""
+        now = datetime.now(timezone.utc)
+        await self.session.execute(
+            update(Feedback)
+            .where(Feedback.id == feedback_id)
+            .values(reply_text=reply_text, replied=True, replied_at=now)
+        )
+        await self.session.flush()
+        return await self.get_by_id(feedback_id)

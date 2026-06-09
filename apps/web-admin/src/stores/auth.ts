@@ -1,20 +1,33 @@
 import { defineStore } from "pinia"
-import axios from "axios"
+import { authApi } from "../services/api"
+import type { UserInfo } from "../services/types"
 
 export const useAuthStore = defineStore("auth", {
   state: () => ({
     accessToken: localStorage.getItem("eira:admin:at") || "",
     refreshToken: localStorage.getItem("eira:admin:rt") || "",
-    user: null as null | { id: number; email: string; role: string },
+    user: null as UserInfo | null,
   }),
   actions: {
     async login(email: string, password: string) {
-      const r = await axios.post("/api/auth/login", { email, password })
-      this.accessToken = r.data.access_token
-      this.refreshToken = r.data.refresh_token
+      const result = await authApi.login({ email, password })
+      this.accessToken = result.access_token
+      this.refreshToken = result.refresh_token
       localStorage.setItem("eira:admin:at", this.accessToken)
       localStorage.setItem("eira:admin:rt", this.refreshToken)
+      // Fetch user profile after successful login
+      await this.fetchUser()
     },
+
+    async fetchUser() {
+      try {
+        this.user = await authApi.getMe()
+      } catch {
+        // If getMe fails, we're still logged in (tokens are set)
+        this.user = null
+      }
+    },
+
     logout() {
       this.accessToken = ""
       this.refreshToken = ""

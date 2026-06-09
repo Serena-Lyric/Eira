@@ -11,9 +11,12 @@ import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends
 from pydantic import ValidationError
 
-from app.core.config import get_settings, LlmSettings
-from app.capabilities.llm.factory import create_llm_provider
+from app.core.config import get_settings
 from app.capabilities.llm.base import BaseLLMProvider
+from app.capabilities.llm.provider_registry import (
+    get_provider_registry,
+    get_effective_llm_settings,
+)
 from app.domain.identity.models import User
 from app.orchestrator.state import ChatState
 from app.orchestrator.graph import build_graph
@@ -37,17 +40,6 @@ from .messages import (
 logger = structlog.get_logger(__name__)
 
 router = APIRouter()
-
-# In-memory provider cache (cleared on config change)
-_provider_cache: dict[str, BaseLLMProvider] = {}
-
-
-def _get_provider(settings: LlmSettings) -> BaseLLMProvider:
-    """Return a cached or new provider instance."""
-    key = f"{settings.provider}:{settings.model}"
-    if key not in _provider_cache:
-        _provider_cache[key] = create_llm_provider(settings)
-    return _provider_cache[key]
 
 
 async def _process_user_text(
@@ -121,6 +113,7 @@ async def _process_user_text(
                 message_id=None,  # would be set if we persisted via T1.3
                 latency_ms=round(latency_ms, 2),
                 tokens={"completion": len(full_text)},
+                sources=result.knowledge_sources if result.knowledge_sources else None,
             ).model_dump()
         )
         await ws.send_json(StateOut(phase="done").model_dump())
@@ -158,12 +151,21 @@ async def websocket_chat(
         return
 
     await ws.accept()
-    settings = get_settings().llm
-    provider = _get_provider(settings)
+    settings = await get_effective_llm_settings()
+    provider = await get_provider_registry().get(settings)
 
     try:
         while True:
             raw = await ws.receive_text()
+
+            # Per-connection message rate limit (§7.4)
+            from app.core.rate_limit import get_ws_limiter
+            if not await get_ws_limiter().check(str(user_id), "ws_chat"):
+                await ws.send_json(
+                    ErrorOut(code="rate_limited", detail="消息过于频繁，请稍后再试").model_dump()
+                )
+                continue
+
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
@@ -203,5 +205,5 @@ async def websocket_chat(
         logger.error("ws.chat.fatal", user_id=user_id, error=str(exc))
         try:
             await ws.close(code=4000)
-        except Exception:
-            pass
+        except Exception as exc2:
+            logger.debug("ws.close_failed", user_id=user_id, error=str(exc2))

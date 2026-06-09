@@ -118,6 +118,12 @@ class OpenAICompatProvider(BaseLLMProvider):
         async for delta in _stream_with_retry():
             yield delta
 
+    async def close(self) -> None:
+        """Release the underlying AsyncOpenAI client and its connection pool."""
+        if self._client is not None:
+            await self._client.close()
+            self._client = None
+
     async def complete(
         self, messages: list[dict[str, Any]], **kwargs: Any
     ) -> LlmResult:

@@ -96,62 +96,137 @@ export function useLive2DController() {
     return delegate?.getSubdelegate()?.getView();
   }
 
+  /** 获取当前加载的模型实例。 */
+  function getModel() {
+    return delegate?.getSubdelegate()?.getLive2DManager()?.getModel();
+  }
+
+  // getModel は将来の拡張用に保持（音声/動作ブリッジから参照されうる）。
+  void getModel;
+
+  /**
+   * 指针(clientX, clientY)是否在交互区域内。
+   *
+   * 改为页面判定：仅判断指针是否在 canvas 所覆盖的窗口范围内，
+   * 不再使用 readPixels 做像素级 alpha 检测。
+   */
+  function isPointerOverCharacter(clientX: number, clientY: number): boolean {
+    if (!canvas) return false;
+    const rect = canvas.getBoundingClientRect();
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
+  }
+
   function setupInteractions() {
     const container = containerRef.value;
     if (!container || !canvas) return;
 
-    // 拖拽平移（鼠标左键按住拖动模型，松开固定；作用于 Framework 的 ViewMatrix）。
+    // アクティブなポインタを追跡（マルチタッチ pinch 用）
+    const pointers = new Map<number, { x: number; y: number }>();
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
+    let pinchDist = 0; // 直前の2指間距離
 
-    canvas.style.touchAction = 'none'; // 触摸设备不滚动页面
+    // ホイールズーム用「セッション」状態。
+    // 角色上で初めてホイールを回した時に arm し、以降は連続スクロール中
+    // 命中判定をスキップして滑らかにズーム。スクロールが止まったら（=放開）
+    // タイマーで解除し、次回は再び命中判定からやり直す。
+    let wheelArmed = false;
+    let wheelIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+    canvas.style.touchAction = 'none';
     canvas.style.cursor = 'grab';
 
+    const dist2 = () => {
+      const pts = Array.from(pointers.values());
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      return Math.hypot(dx, dy);
+    };
+
+    // 门控：仅在「手势开始」时命中判定一次；手势进行中不再重复检测，
+    // 直到松开（指针抬起 / 滚轮停止）才重新检测下一次手势。
     pointerDownHandler = (e: PointerEvent) => {
-      // 仅响应鼠标左键（button 0）；触摸/笔的 pointerdown button 也为 0
-      if (e.button !== 0) return;
+      if (e.pointerType !== 'touch' && e.button !== 0) return;
+      // 2 指目以降は pinch 継続のため命中判定をスキップ（1 指目で既に角色上に居る）。
+      if (pointers.size === 0 && !isPointerOverCharacter(e.clientX, e.clientY)) return;
       e.preventDefault();
-      dragging = true;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      canvas!.style.cursor = 'grabbing';
-      try {
-        canvas!.setPointerCapture(e.pointerId); // 拖出 canvas 仍持续接收
-      } catch {
-        /* ignore */
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size === 1) {
+        dragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        canvas!.style.cursor = 'grabbing';
+        try { canvas!.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      } else if (pointers.size === 2) {
+        // 2指目が触れたら pan を中断し pinch ズームへ
+        dragging = false;
+        pinchDist = dist2();
       }
     };
     pointerMoveHandler = (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId) || document.querySelector('.settings-overlay')) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size >= 2) {
+        // 双指 pinch：距離比でモデル中心ズーム（手势中は命中判定しない）
+        const d = dist2();
+        if (pinchDist > 0 && d > 0) {
+          getView()?.zoomByCenter(d / pinchDist);
+        }
+        pinchDist = d;
+        return;
+      }
       if (!dragging) return;
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
-      // 屏幕 Y 向下为正，ViewMatrix Y 向上为正，故 dy 取反
-      getView()?.panBy(dx, -dy);
+      getView()?.panBy(dx, dy);
     };
-    pointerUpHandler = () => {
-      if (dragging) {
-        dragging = false;
+    pointerUpHandler = (e: PointerEvent) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchDist = 0;
+      if (pointers.size === 0 && dragging) {
+        dragging = false; // 松开 → 下次手势重新检测
         if (canvas) canvas.style.cursor = 'grab';
-        saveView(); // 松开固定并持久化位置
+        saveView();
+      } else if (pointers.size === 1) {
+        // pinch 終了後、残った1指で pan を再開
+        const [p] = Array.from(pointers.values());
+        dragging = true;
+        lastX = p.x;
+        lastY = p.y;
+        saveView();
       }
     };
 
     canvas.addEventListener('pointerdown', pointerDownHandler);
     window.addEventListener('pointermove', pointerMoveHandler);
     window.addEventListener('pointerup', pointerUpHandler);
+    window.addEventListener('pointercancel', pointerUpHandler);
 
-    // 滚轮缩放：passive:false + preventDefault，阻止浏览器页面缩放
+    // 滚轮缩放：首次需命中角色才 arm；之后连续滚动持续以模型中心缩放，
+    // 不再每 tick 重复检测（避免模型缩小后光标落到透明像素导致缩放中断）。
+    // 滚轮停止约 220ms（视为「放开」）后解除 arm，下次重新检测。
     wheelHandler = (e: WheelEvent) => {
+      if (document.querySelector('.settings-overlay')) return;
+      if (!wheelArmed) {
+        if (!isPointerOverCharacter(e.clientX, e.clientY)) return;
+        wheelArmed = true;
+      }
       e.preventDefault();
-      const rect = canvas!.getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-      getView()?.zoomAt(cx, cy, factor);
+      getView()?.zoomByCenter(factor);
       saveView();
+      if (wheelIdleTimer) clearTimeout(wheelIdleTimer);
+      wheelIdleTimer = setTimeout(() => { wheelArmed = false; }, 500);
     };
     container.addEventListener('wheel', wheelHandler, { passive: false });
   }
@@ -173,9 +248,23 @@ export function useLive2DController() {
     if (!saved) return;
     try {
       const arr = JSON.parse(saved);
-      if (Array.isArray(arr) && arr.length === 16) {
-        view.getViewMatrix().setMatrix(new Float32Array(arr));
+      if (!Array.isArray(arr) || arr.length !== 16) return;
+      // 合法性校验：旧版本可能保存了「中心偏移 / 出屏」的坏矩阵，会让模型一直复活到屏幕外。
+      // 缩放(arr[0]) 必须在允许范围内，平移(arr[12],arr[13]) 不能离原点过远，否则丢弃用默认居中。
+      const scale = arr[0];
+      const tx = arr[12];
+      const ty = arr[13];
+      // tx/ty 上限を screenRect の想定最大 (±ratio≈±2.7 以下) に合わせる。
+      // 旧値 ±5.0 では縮小時に画面外へ飛ぶマトリクスを許容してしまうため。
+      const valid =
+        Number.isFinite(scale) && scale >= LAppDefine.ViewMinScale * 0.9 && scale <= LAppDefine.ViewMaxScale * 1.1 &&
+        Number.isFinite(tx) && Math.abs(tx) <= 3.0 &&
+        Number.isFinite(ty) && Math.abs(ty) <= 3.0;
+      if (!valid) {
+        localStorage.removeItem(`${STORAGE_PREFIX}${modelId}`);
+        return;
       }
+      view.getViewMatrix().setMatrix(new Float32Array(arr));
     } catch {
       /* ignore invalid state */
     }
@@ -275,7 +364,10 @@ export function useLive2DController() {
       containerRef.value.removeEventListener('wheel', wheelHandler);
     }
     if (pointerMoveHandler) window.removeEventListener('pointermove', pointerMoveHandler);
-    if (pointerUpHandler) window.removeEventListener('pointerup', pointerUpHandler);
+    if (pointerUpHandler) {
+      window.removeEventListener('pointerup', pointerUpHandler);
+      window.removeEventListener('pointercancel', pointerUpHandler);
+    }
     LAppDelegate.releaseInstance();
     delegate = null;
     if (canvas && canvas.parentElement) {

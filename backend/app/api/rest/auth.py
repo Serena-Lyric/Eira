@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, status
-from app.core.deps import get_identity_service, get_current_user
+from fastapi import APIRouter, Depends, Request, status
+from app.core.deps import get_identity_service, get_current_user, check_auth_rate_limit
 from app.domain.identity.service import IdentityService
 from app.domain.identity.schemas import RegisterIn, LoginIn, TokenPair, UserOut
 from app.domain.identity.models import User
@@ -14,7 +14,9 @@ class RefreshIn(BaseModel):
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=UserOut)
 async def register(
-    p: RegisterIn, svc: IdentityService = Depends(get_identity_service)
+    p: RegisterIn,
+    svc: IdentityService = Depends(get_identity_service),
+    _rate: None = Depends(check_auth_rate_limit),
 ):
     u = await svc.register(p)
     return UserOut(
@@ -23,13 +25,19 @@ async def register(
 
 
 @router.post("/login", response_model=TokenPair)
-async def login(p: LoginIn, svc: IdentityService = Depends(get_identity_service)):
+async def login(
+    p: LoginIn,
+    svc: IdentityService = Depends(get_identity_service),
+    _rate: None = Depends(check_auth_rate_limit),
+):
     return await svc.login(p)
 
 
 @router.post("/refresh", response_model=TokenPair)
 async def refresh(
-    p: RefreshIn, svc: IdentityService = Depends(get_identity_service)
+    p: RefreshIn,
+    svc: IdentityService = Depends(get_identity_service),
+    _rate: None = Depends(check_auth_rate_limit),
 ):
     return await svc.refresh(p.refresh_token)
 

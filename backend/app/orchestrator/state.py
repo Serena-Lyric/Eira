@@ -37,5 +37,11 @@ class ChatState:
     llm_text: str = ""
     llm_meta: dict[str, Any] = field(default_factory=dict)
 
+    # ── RAG / retrieval (Phase 2) ──
+    retrieval_meta: dict[str, Any] = field(default_factory=dict)
+    need_web_search: bool = False
+    web_results: list[dict[str, Any]] = field(default_factory=list)
+    knowledge_sources: list[dict[str, Any]] = field(default_factory=list)
+
     # ── final error ──
     error: str = ""

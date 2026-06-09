@@ -65,12 +65,9 @@ export class LAppView {
     this._viewMatrix.setMinScale(LAppDefine.ViewMinScale); // 限界縮小率
 
     // 表示できる最大範囲
-    this._viewMatrix.setMaxScreenRect(
-      LAppDefine.ViewLogicalMaxLeft,
-      LAppDefine.ViewLogicalMaxRight,
-      LAppDefine.ViewLogicalMaxBottom,
-      LAppDefine.ViewLogicalMaxTop
-    );
+    // Eira: SDK の adjustTranslate 内 clamp は scale 依存バグがあるため無効化し、
+    // panBy で screenRect を絶対境界として直接 clamp する。
+    this._viewMatrix.setMaxScreenRect(-1e9, 1e9, -1e9, 1e9);
   }
 
   /**
@@ -215,16 +212,57 @@ export class LAppView {
   }
 
   /**
+   * Eira: モデル自身の中心を不動点として拡大縮小する。
+   * モデル中心(ビュー座標 0,0)は viewMatrix により screen 上の (_tr[12], _tr[13]) に投影される。
+   * その点を adjustScale の中心に渡すことで、モデルがドラッグで画面端に寄っていても
+   * 縮小・拡大時にモデルが画面外へ流れていかない（中心が固定される）。
+   * 缩放後、念のため画面境界 clamp を行う。
+   */
+  public zoomByCenter(factor: number): void {
+    const tr = this._viewMatrix.getArray();
+    this._viewMatrix.adjustScale(tr[12], tr[13], factor);
+    // 数値精度によるドリフト防止：缩放後に再 clamp
+    const margin = 1.0;
+    const tr2 = this._viewMatrix.getArray();
+    const sl = this._viewMatrix.getScreenLeft() - margin;
+    const sr = this._viewMatrix.getScreenRight() + margin;
+    const sb = this._viewMatrix.getScreenBottom() - margin;
+    const st = this._viewMatrix.getScreenTop() + margin;
+    if (tr2[12] < sl) tr2[12] = sl;
+    if (tr2[12] > sr) tr2[12] = sr;
+    if (tr2[13] < sb) tr2[13] = sb;
+    if (tr2[13] > st) tr2[13] = st;
+  }
+
+  /**
    * Eira: ドラッグによる平行移動。デバイス座標の移動量(dx, dy)を適用する。
+   * 現在のビュー拡大率を考慮し、ズーム時もドラッグ感度が一定になるよう補正。
+   * 移動後、モデル中心が screenRect を超えないよう直接 clamp する。
+   * （SDK の adjustTranslate 内 clamp は scale 依存バグがあるため不使用）
    */
   public panBy(deviceDX: number, deviceDY: number): void {
     // デバイス移動量をスクリーン座標スケールへ変換（_deviceToScreen の拡大率を利用）
     const scaleX = this._deviceToScreen.getArray()[0];
     const scaleY = this._deviceToScreen.getArray()[5];
+    // 現在のビュー拡大率で割ることで、ズーム時もドラッグ変位が画面と一致
+    const viewScale = Math.abs(this._viewMatrix.getArray()[0]) || 1.0;
     this._viewMatrix.adjustTranslate(
-      deviceDX * window.devicePixelRatio * scaleX,
-      deviceDY * window.devicePixelRatio * scaleY
+      (deviceDX * window.devicePixelRatio * scaleX) / viewScale,
+      (deviceDY * window.devicePixelRatio * scaleY) / viewScale
     );
+    // モデル中心の画面位置を screenRect + margin 内に clamp。
+    // margin=0 だとモデルが画面端で完全に止まり空白が大きく出るため、
+    // 1 画面単位の余裕を持たせて自然な可動域にする。
+    const margin = 1.0;
+    const tr = this._viewMatrix.getArray();
+    const sl = this._viewMatrix.getScreenLeft() - margin;
+    const sr = this._viewMatrix.getScreenRight() + margin;
+    const sb = this._viewMatrix.getScreenBottom() - margin;
+    const st = this._viewMatrix.getScreenTop() + margin;
+    if (tr[12] < sl) tr[12] = sl;
+    if (tr[12] > sr) tr[12] = sr;
+    if (tr[13] < sb) tr[13] = sb;
+    if (tr[13] > st) tr[13] = st;
   }
 
   public getViewMatrix(): CubismViewMatrix {

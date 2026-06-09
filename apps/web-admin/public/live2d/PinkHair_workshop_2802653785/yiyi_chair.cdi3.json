@@ -1,0 +1,636 @@
+{
+	"Version": 3,
+	"Parameters": [
+		{
+			"Id": "megane_1",
+			"GroupId": "ParamGroup",
+			"Name": "メガネ1"
+		},
+		{
+			"Id": "ekitai",
+			"GroupId": "ParamGroup",
+			"Name": "液体表す"
+		},
+		{
+			"Id": "ParamCheek",
+			"GroupId": "ParamGroup",
+			"Name": "てれ顔"
+		},
+		{
+			"Id": "me_ga_haato",
+			"GroupId": "ParamGroup",
+			"Name": "目がハート"
+		},
+		{
+			"Id": "ase",
+			"GroupId": "ParamGroup",
+			"Name": "汗"
+		},
+		{
+			"Id": "breath",
+			"GroupId": "ParamGroup",
+			"Name": "breath"
+		},
+		{
+			"Id": "Param48",
+			"GroupId": "ParamGroup5",
+			"Name": "LHActionP"
+		},
+		{
+			"Id": "Param49",
+			"GroupId": "ParamGroup5",
+			"Name": "RHActionP"
+		},
+		{
+			"Id": "ParamHairFront",
+			"GroupId": "ParamGroup2",
+			"Name": "髪揺れ　前"
+		},
+		{
+			"Id": "ParamHairSide",
+			"GroupId": "ParamGroup2",
+			"Name": "髪揺れ　横"
+		},
+		{
+			"Id": "ParamHairBack",
+			"GroupId": "ParamGroup2",
+			"Name": "髪揺れ　後"
+		},
+		{
+			"Id": "Param99",
+			"GroupId": "ParamGroup2",
+			"Name": "照れ"
+		},
+		{
+			"Id": "ParamEyeLSmile",
+			"GroupId": "ParamGroup2",
+			"Name": "左目　笑顔"
+		},
+		{
+			"Id": "ParamEyeRSmile",
+			"GroupId": "ParamGroup2",
+			"Name": "右目　笑顔"
+		},
+		{
+			"Id": "ParamBrowLY",
+			"GroupId": "ParamGroup2",
+			"Name": "左眉　上下"
+		},
+		{
+			"Id": "ParamBrowRY",
+			"GroupId": "ParamGroup2",
+			"Name": "右眉　上下"
+		},
+		{
+			"Id": "ParamBrowLX",
+			"GroupId": "ParamGroup2",
+			"Name": "左眉　左右"
+		},
+		{
+			"Id": "ParamBrowRX",
+			"GroupId": "ParamGroup2",
+			"Name": "右眉　左右"
+		},
+		{
+			"Id": "ParamBrowLAngle",
+			"GroupId": "ParamGroup2",
+			"Name": "左眉　角度"
+		},
+		{
+			"Id": "ParamBrowRAngle",
+			"GroupId": "ParamGroup2",
+			"Name": "右眉　角度"
+		},
+		{
+			"Id": "Param53",
+			"GroupId": "ParamGroup2",
+			"Name": "ChairFingerLP"
+		},
+		{
+			"Id": "Param52",
+			"GroupId": "ParamGroup2",
+			"Name": "ChairFingerRP"
+		},
+		{
+			"Id": "Param7",
+			"GroupId": "ParamGroup3",
+			"Name": "H1P1"
+		},
+		{
+			"Id": "Param8",
+			"GroupId": "ParamGroup3",
+			"Name": "H2P2"
+		},
+		{
+			"Id": "Param12",
+			"GroupId": "ParamGroup3",
+			"Name": "H2P1"
+		},
+		{
+			"Id": "Param14",
+			"GroupId": "ParamGroup3",
+			"Name": "H2P2"
+		},
+		{
+			"Id": "Param11",
+			"GroupId": "ParamGroup3",
+			"Name": "H3P1"
+		},
+		{
+			"Id": "Param13",
+			"GroupId": "ParamGroup3",
+			"Name": "H3P2"
+		},
+		{
+			"Id": "Param10",
+			"GroupId": "ParamGroup3",
+			"Name": "H4P1"
+		},
+		{
+			"Id": "Param9",
+			"GroupId": "ParamGroup3",
+			"Name": "H4P2"
+		},
+		{
+			"Id": "Param15",
+			"GroupId": "ParamGroup3",
+			"Name": "RH5P1"
+		},
+		{
+			"Id": "Param16",
+			"GroupId": "ParamGroup3",
+			"Name": "RH5P2"
+		},
+		{
+			"Id": "Param19",
+			"GroupId": "ParamGroup3",
+			"Name": "LH5P1"
+		},
+		{
+			"Id": "Param20",
+			"GroupId": "ParamGroup3",
+			"Name": "LH5P2"
+		},
+		{
+			"Id": "Param17",
+			"GroupId": "ParamGroup3",
+			"Name": "LH6P1"
+		},
+		{
+			"Id": "Param18",
+			"GroupId": "ParamGroup3",
+			"Name": "LH6P2"
+		},
+		{
+			"Id": "Param21",
+			"GroupId": "ParamGroup3",
+			"Name": "RH6P1"
+		},
+		{
+			"Id": "Param22",
+			"GroupId": "ParamGroup3",
+			"Name": "RH6P2"
+		},
+		{
+			"Id": "Param23",
+			"GroupId": "ParamGroup3",
+			"Name": "BH1"
+		},
+		{
+			"Id": "Param24",
+			"GroupId": "ParamGroup3",
+			"Name": "BH2"
+		},
+		{
+			"Id": "Param46",
+			"GroupId": "ParamGroup4",
+			"Name": "neckline阴影P1"
+		},
+		{
+			"Id": "Param47",
+			"GroupId": "ParamGroup4",
+			"Name": "neckline阴影P2"
+		},
+		{
+			"Id": "Param35",
+			"GroupId": "ParamGroup4",
+			"Name": "muneP1"
+		},
+		{
+			"Id": "Param34",
+			"GroupId": "ParamGroup4",
+			"Name": "muneP2"
+		},
+		{
+			"Id": "Param",
+			"GroupId": "ParamGroup4",
+			"Name": "舌P"
+		},
+		{
+			"Id": "Param33",
+			"GroupId": "ParamGroup4",
+			"Name": "小舌P"
+		},
+		{
+			"Id": "Param2",
+			"GroupId": "ParamGroup4",
+			"Name": "ハイライトX"
+		},
+		{
+			"Id": "Param3",
+			"GroupId": "ParamGroup4",
+			"Name": "ハイライトY"
+		},
+		{
+			"Id": "Param28",
+			"GroupId": "ParamGroup4",
+			"Name": "CaseP2"
+		},
+		{
+			"Id": "Param25",
+			"GroupId": "ParamGroup4",
+			"Name": "CaseP1"
+		},
+		{
+			"Id": "Param26",
+			"GroupId": "ParamGroup4",
+			"Name": "NeckTieP1"
+		},
+		{
+			"Id": "Param27",
+			"GroupId": "ParamGroup4",
+			"Name": "NeckTieP2"
+		},
+		{
+			"Id": "Param31",
+			"GroupId": "ParamGroup4",
+			"Name": "HBP1"
+		},
+		{
+			"Id": "Param30",
+			"GroupId": "ParamGroup4",
+			"Name": "HBP2"
+		},
+		{
+			"Id": "Param37",
+			"GroupId": "ParamGroup4",
+			"Name": "鍵A"
+		},
+		{
+			"Id": "Param38",
+			"GroupId": "ParamGroup4",
+			"Name": "鍵B"
+		},
+		{
+			"Id": "Param39",
+			"GroupId": "ParamGroup4",
+			"Name": "鍵C"
+		},
+		{
+			"Id": "Param45",
+			"GroupId": "ParamGroup4",
+			"Name": "鍵D"
+		},
+		{
+			"Id": "Param40",
+			"GroupId": "ParamGroup4",
+			"Name": "鍵BP"
+		},
+		{
+			"Id": "Param42",
+			"GroupId": "ParamGroup4",
+			"Name": "鍵BP2"
+		},
+		{
+			"Id": "Param41",
+			"GroupId": "ParamGroup4",
+			"Name": "鍵CP"
+		},
+		{
+			"Id": "Param43",
+			"GroupId": "ParamGroup4",
+			"Name": "鍵CP2"
+		},
+		{
+			"Id": "Param44",
+			"GroupId": "ParamGroup4",
+			"Name": "鍵DP1"
+		},
+		{
+			"Id": "give_me_a_chair",
+			"GroupId": "ParamGroup6",
+			"Name": "ChangeToChair"
+		},
+		{
+			"Id": "Param51",
+			"GroupId": "ParamGroup6",
+			"Name": "ChairShoeKT"
+		},
+		{
+			"Id": "Param54",
+			"GroupId": "ParamGroup6",
+			"Name": "legLP2"
+		},
+		{
+			"Id": "Param55",
+			"GroupId": "ParamGroup6",
+			"Name": "legLP3"
+		},
+		{
+			"Id": "Param56",
+			"GroupId": "ParamGroup6",
+			"Name": "LegRP3"
+		},
+		{
+			"Id": "Param57",
+			"GroupId": "ParamGroup6",
+			"Name": "LegRP4"
+		},
+		{
+			"Id": "ParamAngleX",
+			"GroupId": "",
+			"Name": "角度 X"
+		},
+		{
+			"Id": "ParamAngleY",
+			"GroupId": "",
+			"Name": "角度 Y"
+		},
+		{
+			"Id": "ParamAngleZ",
+			"GroupId": "",
+			"Name": "角度 Z"
+		},
+		{
+			"Id": "ParamEyeROpen",
+			"GroupId": "",
+			"Name": "左目　開閉"
+		},
+		{
+			"Id": "ParamEyeLOpen",
+			"GroupId": "",
+			"Name": "右目　開閉"
+		},
+		{
+			"Id": "ParamEyeBallX",
+			"GroupId": "",
+			"Name": "目玉 X"
+		},
+		{
+			"Id": "ParamEyeBallY",
+			"GroupId": "",
+			"Name": "目玉 Y"
+		},
+		{
+			"Id": "ParamBrowLForm",
+			"GroupId": "",
+			"Name": "左眉　変形"
+		},
+		{
+			"Id": "ParamBrowRForm",
+			"GroupId": "",
+			"Name": "右眉　変形"
+		},
+		{
+			"Id": "ParamMouthForm",
+			"GroupId": "",
+			"Name": "口　変形"
+		},
+		{
+			"Id": "ParamMouthOpenY",
+			"GroupId": "",
+			"Name": "口　開閉"
+		},
+		{
+			"Id": "tongue_out",
+			"GroupId": "",
+			"Name": "舌出す"
+		},
+		{
+			"Id": "ParamBodyAngleX",
+			"GroupId": "",
+			"Name": "体の回転　X"
+		},
+		{
+			"Id": "ParamBodyAngleZ",
+			"GroupId": "",
+			"Name": "体の回転　Z"
+		},
+		{
+			"Id": "ParamBodyAngleY",
+			"GroupId": "",
+			"Name": "体の回転　Y"
+		},
+		{
+			"Id": "ParamBreath",
+			"GroupId": "",
+			"Name": "呼吸"
+		}
+	],
+	"ParameterGroups": [
+		{
+			"Id": "ParamGroup",
+			"GroupId": "",
+			"Name": "表情"
+		},
+		{
+			"Id": "ParamGroup5",
+			"GroupId": "",
+			"Name": "BodyActionP"
+		},
+		{
+			"Id": "ParamGroup2",
+			"GroupId": "",
+			"Name": "NOUSE"
+		},
+		{
+			"Id": "ParamGroup3",
+			"GroupId": "",
+			"Name": "HairP"
+		},
+		{
+			"Id": "ParamGroup4",
+			"GroupId": "",
+			"Name": "OtherP"
+		},
+		{
+			"Id": "ParamGroup6",
+			"GroupId": "",
+			"Name": "CHAIR-P"
+		}
+	],
+	"Parts": [
+		{
+			"Id": "Part28",
+			"Name": "leglup.psd"
+		},
+		{
+			"Id": "Part27",
+			"Name": "大拇指更新.psd"
+		},
+		{
+			"Id": "Part25",
+			"Name": "大拇指更新.psd"
+		},
+		{
+			"Id": "Part22",
+			"Name": "leg阴影更新.psd"
+		},
+		{
+			"Id": "Part26",
+			"Name": "衣领阴影更新.psd"
+		},
+		{
+			"Id": "Part14",
+			"Name": "付属品"
+		},
+		{
+			"Id": "Part",
+			"Name": "髪の毛"
+		},
+		{
+			"Id": "Part2",
+			"Name": "鍵"
+		},
+		{
+			"Id": "Part8",
+			"Name": "頭正面"
+		},
+		{
+			"Id": "Part19",
+			"Name": "服"
+		},
+		{
+			"Id": "ArtMesh169_Skinning",
+			"Name": "LegRの影UP80(スキニング)"
+		},
+		{
+			"Id": "ArtMesh170_Skinning",
+			"Name": "LegLの影UP80(スキニング)"
+		},
+		{
+			"Id": "GLASS",
+			"Name": "GLASS"
+		},
+		{
+			"Id": "Part17",
+			"Name": "shoe のコピー"
+		},
+		{
+			"Id": "Part21",
+			"Name": "hand2 のコピー"
+		},
+		{
+			"Id": "pants",
+			"Name": "pants"
+		},
+		{
+			"Id": "Part24",
+			"Name": "chair のコピー"
+		},
+		{
+			"Id": "Part3",
+			"Name": "ペンギン"
+		},
+		{
+			"Id": "up",
+			"Name": "up"
+		},
+		{
+			"Id": "down",
+			"Name": "down"
+		},
+		{
+			"Id": "Part9",
+			"Name": "正面の髪"
+		},
+		{
+			"Id": "Part10",
+			"Name": "DOWN眉毛L"
+		},
+		{
+			"Id": "Part11",
+			"Name": "DOWN眉毛R"
+		},
+		{
+			"Id": "Part12",
+			"Name": "眼球L"
+		},
+		{
+			"Id": "Part15",
+			"Name": "眼球R"
+		},
+		{
+			"Id": "Part18",
+			"Name": "笑え口"
+		},
+		{
+			"Id": "Part20",
+			"Name": "工作牌"
+		},
+		{
+			"Id": "Part23",
+			"Name": "down"
+		},
+		{
+			"Id": "handRY",
+			"Name": "handRY"
+		},
+		{
+			"Id": "LegL2_Skinning",
+			"Name": "LegL2(スキニング)"
+		},
+		{
+			"Id": "Legkake_Skinning",
+			"Name": "Legkake(スキニング)"
+		},
+		{
+			"Id": "LegR1_Skinning",
+			"Name": "LegR1(スキニング)"
+		},
+		{
+			"Id": "ArtMesh150_Skinning",
+			"Name": "LegLの影UP80 のコピー(スキニング)"
+		},
+		{
+			"Id": "Part4",
+			"Name": "串1"
+		},
+		{
+			"Id": "Part5",
+			"Name": "串2"
+		},
+		{
+			"Id": "Part6",
+			"Name": "串1"
+		},
+		{
+			"Id": "Part7",
+			"Name": "串2"
+		},
+		{
+			"Id": "Part13",
+			"Name": "眼L"
+		},
+		{
+			"Id": "Part16",
+			"Name": "眼R"
+		},
+		{
+			"Id": "Part34",
+			"Name": "眼球ハイライトL"
+		},
+		{
+			"Id": "Part36",
+			"Name": "眼球L"
+		},
+		{
+			"Id": "Part39",
+			"Name": "眼球ハイライトR"
+		},
+		{
+			"Id": "Part41",
+			"Name": "眼球R"
+		}
+	]
+}

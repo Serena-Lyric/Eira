@@ -14,15 +14,15 @@ const router = createRouter({
     {
       path: "/chat",
       component: () => import("./pages/Chat.vue"),
-      // meta: { requiresAuth: true }, // Temporarily disabled for UI testing
+      meta: { requiresAuth: true },
     },
     { path: "/", redirect: "/chat" },
   ],
 })
 
-// router.beforeEach((to) => {
-//   const token = localStorage.getItem('eira_access_token');
-//   if (to.meta.requiresAuth && !token) return "/login"
-// })
+router.beforeEach((to) => {
+  const token = localStorage.getItem("eira:at")
+  if (to.meta.requiresAuth && !token) return "/login"
+})
 
 createApp(App).use(createPinia()).use(router).mount("#app")
