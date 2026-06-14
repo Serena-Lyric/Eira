@@ -1,6 +1,10 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { LAppDelegate } from '../live2d/lappdelegate'
 import * as LAppDefine from '../live2d/lappdefine'
+import { createLive2DLoader } from '@shared/live2d/live2dLoader'
+import type { ExtractedModel, BlobBase } from '@shared/live2d/live2dLoader'
+
+const loader = createLive2DLoader()
 
 /**
  * Live2D 预览控制器（管理端专用，基于官方 Cubism SDK for Web 5 Framework）。
@@ -25,43 +29,14 @@ export interface ModelDescriptor {
   previewImage?: string
   /** 显示名称（从 vtube.json / 目录名解析） */
   displayName?: string
+  /** OSS key，用于 changeModel 匹配，如 "live2d/8767b36fcc6c/mao_pro_zh.zip" */
+  ossKey?: string
   /** 从 vtube.json 探测到的动作文件列表（model3.json 无 Motions 时使用） */
   discoveredMotions?: Array<{ group: string; index: number; label: string; file: string }>
 }
 
-/** 预览可用模型注册表（label 使用文件夹名，由模型目录自动识别） */
-export const ADMIN_MODEL_REGISTRY: ModelDescriptor[] = [
-  {
-    id: 'mao_pro_zh',
-    label: 'mao_pro_zh',
-    dir: '/live2d/mao_pro_zh/runtime/',
-    fileName: 'mao_pro.model3.json',
-  },
-  {
-    id: 'hiyori_pro_zh',
-    label: 'hiyori_pro_zh',
-    dir: '/live2d/hiyori_pro_zh/runtime/',
-    fileName: 'hiyori_pro_t11.model3.json',
-  },
-  {
-    id: 'akari_vts',
-    label: 'akari_vts',
-    dir: '/live2d/akari_vts/',
-    fileName: 'akari.model3.json',
-  },
-  {
-    id: 'hiyori_vts',
-    label: 'hiyori_vts',
-    dir: '/live2d/hiyori_vts/',
-    fileName: 'hiyori.model3.json',
-  },
-  {
-    id: 'pinkhair',
-    label: 'PinkHair_workshop_2802653785',
-    dir: '/live2d/PinkHair_workshop_2802653785/',
-    fileName: 'yiyi_chair.model3.json',
-  },
-]
+// §4 fix: Hardcoded ADMIN_MODEL_REGISTRY removed — models now fetched from
+// backend asset list via fetchAvailableModels().
 
 const LOAD_TIMEOUT_MS = 8000
 
@@ -72,9 +47,8 @@ export function useLive2DPreview() {
   const loadError = ref<string | null>(null)
 
   // ── 模型信息列表（含预览图、显示名称） ──────────────────────────────
-  const availableModels = ref<ModelDescriptor[]>(
-    ADMIN_MODEL_REGISTRY.map((m) => ({ ...m })),
-  )
+  // §4 fix: Fetch from backend asset list instead of hardcoded registry
+  const availableModels = ref<ModelDescriptor[]>([])
 
   /** 当前模型的自定义待机动作覆盖（null=使用默认"Idle"组随机播放） */
   const idleMotionOverride = ref<{ group: string; index: number } | null>(null)
@@ -156,6 +130,26 @@ export function useLive2DPreview() {
       if (discovered.length > 0) {
         m.discoveredMotions = discovered
       }
+    }
+  }
+
+  /** §4 fix: Fetch available Live2D models from backend asset list */
+  async function fetchAvailableModels() {
+    try {
+      const { assetApi } = await import('../services/api')
+      const assets = await assetApi.list()
+      const live2dModels = assets.filter((a: any) => a.kind === 'live2d_model')
+      availableModels.value = live2dModels.map((a: any) => ({
+        id: a.name,           // Match by display name
+        label: a.name,
+        dir: '',              // Will be resolved at load time via shared loader
+        fileName: '',
+        ossKey: a.oss_key || '',
+        _ossKey: a.id,        // Asset ID for download endpoint
+        _ossKeyStr: String(a.id),  // String form for matching by asset ID
+      }))
+    } catch {
+      console.warn('[Live2D Admin] Failed to fetch models from backend')
     }
   }
 
@@ -408,7 +402,28 @@ export function useLive2DPreview() {
     const manager = delegate?.getSubdelegate()?.getLive2DManager()
     if (!manager) return false
 
-    console.log(`[Live2D Admin] Loading: ${desc.label} from ${desc.dir}${desc.fileName}`)
+    const assetId = (desc as any)._ossKey
+    if (!assetId) {
+      console.warn('[Live2D Admin] No asset ID, skipping')
+      return false
+    }
+    console.log(`[Live2D Admin] Loading: ${desc.label} (asset #${assetId})`)
+
+    try {
+      // Download via backend streaming endpoint, extract via shared loader
+      const dlUrl = `/api/admin/assets/${assetId}/file`
+      const extracted: ExtractedModel = await loader.downloadAndExtract(dlUrl, String(assetId), { cache: false })
+
+      // Create virtual base + install fetch interceptor
+      const blobBase: BlobBase = loader.createBlobBase(extracted.files, extracted.model3Path)
+      loader.installFetchInterceptor(blobBase.virtualBase, extracted.files)
+
+      desc = { ...desc, dir: blobBase.virtualBase, fileName: blobBase.model3FileName }
+    } catch (err: any) {
+      console.error('[Live2D Admin] Download failed:', err.message)
+      return false
+    }
+
     manager.loadModel(desc.dir, desc.fileName)
     const ok = await waitModelReady()
     if (ok) {
@@ -418,7 +433,6 @@ export function useLive2DPreview() {
       // 右上方へオフセットし、中間欄カードの中央にモデルを配置
       manager.getModel()?.centerModel(2.0, 0.08, 0.15)
       refreshAvailableMotions()
-      // 应用保存的待机动作覆盖（如果有的话）
       if (idleMotionOverride.value) {
         applyIdleMotionToModel(
           idleMotionOverride.value.group,
@@ -432,9 +446,14 @@ export function useLive2DPreview() {
     return false
   }
 
-  /** 切换到指定模型 */
+  /** 切换到指定模型。支持匹配：显示名称、asset ID、OSS key 字符串 */
   async function changeModel(modelId: string) {
-    const desc = ADMIN_MODEL_REGISTRY.find((m) => m.id === modelId)
+    const desc = availableModels.value.find((m: any) =>
+      m.id === modelId ||
+      String(m._ossKey) === modelId ||
+      m._ossKeyStr === modelId ||
+      m.ossKey === modelId
+    )
     if (!desc) {
       console.warn(`[Live2D Admin] Unknown model: ${modelId}`)
       return
@@ -465,21 +484,30 @@ export function useLive2DPreview() {
     }
     delegate.run()
 
+    // §4 fix: Fetch model list from backend before resolving meta
+    await fetchAvailableModels()
+
     // 预解析所有模型的元数据（预览图、显示名称）
     await resolveModelMeta()
 
     setupInteractions()
 
-    // Load primary model
-    const primary = ADMIN_MODEL_REGISTRY[0]
-    const ok = await loadModel(primary)
-    if (!ok) {
-      const fallback = ADMIN_MODEL_REGISTRY[1]
-      const fbOk = await loadModel(fallback)
-      if (!fbOk) {
-        loadError.value = 'All Live2D models failed to load'
-        console.error('[Live2D Admin] All models failed')
+    // Load primary model from fetched list (§4 fix)
+    if (availableModels.value.length > 0) {
+      const primary = availableModels.value[0]
+      const ok = await loadModel(primary)
+      if (!ok && availableModels.value.length > 1) {
+        const fallback = availableModels.value[1]
+        const fbOk = await loadModel(fallback)
+        if (!fbOk) {
+          loadError.value = 'All Live2D models failed to load'
+          console.error('[Live2D Admin] All models failed')
+        }
+      } else if (!ok) {
+        loadError.value = 'Live2D model failed to load'
       }
+    } else {
+      console.warn('[Live2D Admin] No models available from backend')
     }
   }
 
@@ -510,6 +538,7 @@ export function useLive2DPreview() {
     loadError,
     availableModels,
     availableMotions,
+    fetchAvailableModels,
     refreshAvailableMotions,
     changeModel,
     applyIdleMotionToModel,
