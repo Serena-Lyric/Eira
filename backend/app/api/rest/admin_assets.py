@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_db_session, require_admin, check_write_rate_limit, check_upload_rate_limit
 from app.domain.identity.models import User
 from app.domain.persona.quota import check_quota, QUOTAS
+from app.infra.oss import get_oss_client
 
 logger = structlog.get_logger(__name__)
 
@@ -395,54 +396,16 @@ async def download_asset_file(
     oss_key, kind, name = row[0], row[1], row[2]
     bucket = BUCKETS.get(kind, "eira-backgrounds")
 
-    from app.infra.oss import presign_get
-    import httpx
-    from urllib.parse import urlparse, urlunparse
-
     try:
-        presigned = presign_get(bucket, oss_key, expires=60)
-        logger.info("streaming_asset", asset_id=asset_id, key=oss_key)
-
-        # Replace localhost with 127.0.0.1 to force IPv4, but keep the
-        # original Host header so the S3 signature (computed against
-        # localhost:9000) still matches.
-        parsed = urlparse(presigned)
-        original_host = parsed.hostname
-        if original_host in ("localhost", "127.0.0.1"):
-            ipv4_url = urlunparse(parsed._replace(netloc=f"127.0.0.1:{parsed.port or 9000}"))
-        else:
-            ipv4_url = presigned
-
-        request_headers = {"Host": f"{original_host}:{parsed.port or 9000}"}
-
-        # Verify the presigned URL is reachable before streaming
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as probe:
-            head = await probe.head(ipv4_url, headers=request_headers)
-            if head.status_code >= 400:
-                logger.error("presigned_fetch_failed", asset_id=asset_id, status=head.status_code)
-                raise HTTPException(502, "OSS 读取失败")
-
-        async def stream_from_presigned():
-            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, read=120.0)) as client:
-                async with client.stream("GET", ipv4_url, headers=request_headers) as resp:
-                    async for chunk in resp.aiter_bytes(65536):
-                        yield chunk
-
-        content_length = head.headers.get("Content-Length")
-        resp_headers = {"Content-Disposition": f'attachment; filename="{name}.zip"'}
-        if content_length:
-            resp_headers["Content-Length"] = content_length
-
+        s3_response = get_oss_client().get_object(Bucket=bucket, Key=oss_key)
         return StreamingResponse(
-            stream_from_presigned(),
+            s3_response["Body"].iter_chunks(),
             media_type="application/zip",
-            headers=resp_headers,
+            headers={
+                "Content-Disposition": f'attachment; filename="{name}.zip"',
+                "Content-Length": str(s3_response["ContentLength"]),
+            },
         )
-    except HTTPException:
-        raise
-    except httpx.TimeoutException:
-        logger.error("oss_stream_timeout", asset_id=asset_id)
-        raise HTTPException(504, "OSS 响应超时")
     except Exception as e:
         logger.error("oss_stream_failed", asset_id=asset_id, error=str(e))
         raise HTTPException(502, "OSS 读取失败")
