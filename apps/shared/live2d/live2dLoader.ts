@@ -226,8 +226,9 @@ export function createLive2DLoader(): Live2DLoader {
 
     const rawFiles: Array<{ path: string; data: ArrayBuffer }> = []
     for (const [path, entry] of Object.entries(zip.files)) {
-      if (entry.dir) continue
-      rawFiles.push({ path, data: await entry.async('arraybuffer') })
+      const file = entry as JSZip.JSZipObject
+      if (file.dir) continue
+      rawFiles.push({ path, data: await file.async('arraybuffer') })
     }
 
     if (rawFiles.length === 0) {

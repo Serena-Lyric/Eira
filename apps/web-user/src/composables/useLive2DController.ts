@@ -1,42 +1,17 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { LAppDelegate } from '../live2d/lappdelegate';
 import * as LAppDefine from '../live2d/lappdefine';
+import { useLive2DModelLoader } from './useLive2DModelLoader';
 
 /**
  * Live2D 控制器（基于官方 Cubism SDK for Web 5 Framework 自管 WebGL 渲染）。
  *
- * 历史背景：曾用 pixi-live2d-display，但其与 Cubism 5 Core 不兼容
- *（库读 drawables.renderOrders，而 Core 5 把 renderOrders 移到了 model 顶层）
- * 导致渲染崩溃，故改用官方 Framework。
+ * §4 fix: 不再使用硬编码 MODEL_REGISTRY。模型从 OSS 下载 → JSZip 解压 →
+ * IndexedDB 缓存 → 通过 fetch 拦截器提供 Blob URL 给 Cubism SDK。
  *
  * 对外接口保持不变：containerRef / isLoaded / activeModelId / loadError /
  * triggerMotion / setMouthOpen，Chat.vue 无需改动。
  */
-
-/** 模型描述符——按优先级排序（主模型在前，失败回退）。 */
-interface ModelDescriptor {
-  id: string;
-  label: string;
-  /** model3.json 所在目录（末尾带斜杠，相对站点根） */
-  dir: string;
-  /** model3.json 文件名 */
-  fileName: string;
-}
-
-const MODEL_REGISTRY: ModelDescriptor[] = [
-  {
-    id: 'mao_pro_zh',
-    label: 'Mao (Primary)',
-    dir: '/live2d/mao_pro_zh/runtime/',
-    fileName: 'mao_pro.model3.json',
-  },
-  {
-    id: 'hiyori_pro_zh',
-    label: 'Hiyori (Fallback)',
-    dir: '/live2d/hiyori_pro_zh/runtime/',
-    fileName: 'hiyori_pro_t11.model3.json',
-  },
-];
 
 const LOAD_TIMEOUT_MS = 8000;
 const STORAGE_PREFIX = 'eira:live2d:';
@@ -46,6 +21,9 @@ export function useLive2DController() {
   const isLoaded = ref(false);
   const activeModelId = ref<string | null>(null);
   const loadError = ref<string | null>(null);
+
+  // §4 fix: Model loader replaces hardcoded MODEL_REGISTRY
+  const modelLoader = useLive2DModelLoader();
 
   let delegate: LAppDelegate | null = null;
   let canvas: HTMLCanvasElement | null = null;
@@ -289,27 +267,27 @@ export function useLive2DController() {
 
     const manager = delegate.getSubdelegate().getLive2DManager();
 
-    // 依次尝试模型，成功即止
-    for (const desc of MODEL_REGISTRY) {
-      console.log(`[Live2D] Attempting to load: ${desc.label} from ${desc.dir}${desc.fileName}`);
-      manager.loadModel(desc.dir, desc.fileName);
-      const ok = await waitModelReady();
-      if (ok) {
-        activeModelId.value = desc.id;
+    // §4 fix: Load model via OSS → JSZip → IndexedDB → fetch interceptor
+    const ok = await modelLoader.loadModel();
+    if (ok && modelLoader.state.value.baseUrl && modelLoader.state.value.model3FileName) {
+      const { baseUrl, model3FileName } = modelLoader.state.value;
+      console.log(`[Live2D] Loading from: ${baseUrl}${model3FileName}`);
+      manager.loadModel(baseUrl!, model3FileName!);
+      const ready = await waitModelReady();
+      if (ready) {
+        activeModelId.value = baseUrl;
         loadError.value = null;
         isLoaded.value = true;
-        // 居中模型（Mao 等无 Layout 字段的模型需要），再恢复用户的缩放/平移
         manager.getModel()?.centerModel();
-        restoreView(desc.id);
+        restoreView(baseUrl);
         setupInteractions();
-        console.log(`[Live2D] Successfully loaded: ${desc.label}`);
+        console.log('[Live2D] Successfully loaded via model loader');
         return;
       }
-      console.warn(`[Live2D] Failed/timeout loading ${desc.label}, trying next...`);
     }
 
-    loadError.value = 'All Live2D models failed to load';
-    console.error('[Live2D] All models failed to load');
+    loadError.value = modelLoader.state.value.error || '所有 Live2D 模型加载失败';
+    console.error('[Live2D] Model load failed:', loadError.value);
   }
 
   /**
@@ -360,6 +338,7 @@ export function useLive2DController() {
   });
 
   onUnmounted(() => {
+    modelLoader.cleanup()  // 卸载 fetch 拦截器，防止泄漏
     if (wheelHandler && containerRef.value) {
       containerRef.value.removeEventListener('wheel', wheelHandler);
     }
