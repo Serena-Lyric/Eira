@@ -395,16 +395,24 @@ async def download_asset_file(
     oss_key, kind, name = row[0], row[1], row[2]
     bucket = BUCKETS.get(kind, "eira-backgrounds")
 
-    from app.infra.oss import get_oss_client
+    from app.infra.oss import presign_get
+    import httpx
 
     try:
-        s3_response = get_oss_client().get_object(Bucket=bucket, Key=oss_key)
+        presigned = presign_get(bucket, oss_key, expires=60)
+        async def stream_from_presigned():
+            async with httpx.AsyncClient() as client:
+                async with client.stream("GET", presigned) as resp:
+                    if resp.status_code >= 400:
+                        raise HTTPException(502, "OSS 读取失败")
+                    async for chunk in resp.aiter_bytes(65536):
+                        yield chunk
+
         return StreamingResponse(
-            s3_response["Body"].iter_chunks(),
+            stream_from_presigned(),
             media_type="application/zip",
             headers={
                 "Content-Disposition": f'attachment; filename="{name}.zip"',
-                "Content-Length": str(s3_response["ContentLength"]),
             },
         )
     except Exception as e:
