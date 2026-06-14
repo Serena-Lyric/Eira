@@ -397,35 +397,46 @@ async def download_asset_file(
 
     from app.infra.oss import presign_get
     import httpx
+    from urllib.parse import urlparse, urlunparse
 
     try:
         presigned = presign_get(bucket, oss_key, expires=60)
         logger.info("streaming_asset", asset_id=asset_id, key=oss_key)
 
+        # Replace localhost with 127.0.0.1 to force IPv4, but keep the
+        # original Host header so the S3 signature (computed against
+        # localhost:9000) still matches.
+        parsed = urlparse(presigned)
+        original_host = parsed.hostname
+        if original_host in ("localhost", "127.0.0.1"):
+            ipv4_url = urlunparse(parsed._replace(netloc=f"127.0.0.1:{parsed.port or 9000}"))
+        else:
+            ipv4_url = presigned
+
+        request_headers = {"Host": f"{original_host}:{parsed.port or 9000}"}
+
         # Verify the presigned URL is reachable before streaming
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as probe:
-            head = await probe.head(presigned)
+            head = await probe.head(ipv4_url, headers=request_headers)
             if head.status_code >= 400:
                 logger.error("presigned_fetch_failed", asset_id=asset_id, status=head.status_code)
                 raise HTTPException(502, "OSS 读取失败")
 
         async def stream_from_presigned():
             async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, read=120.0)) as client:
-                async with client.stream("GET", presigned) as resp:
+                async with client.stream("GET", ipv4_url, headers=request_headers) as resp:
                     async for chunk in resp.aiter_bytes(65536):
                         yield chunk
 
         content_length = head.headers.get("Content-Length")
-        headers = {
-            "Content-Disposition": f'attachment; filename="{name}.zip"',
-        }
+        resp_headers = {"Content-Disposition": f'attachment; filename="{name}.zip"'}
         if content_length:
-            headers["Content-Length"] = content_length
+            resp_headers["Content-Length"] = content_length
 
         return StreamingResponse(
             stream_from_presigned(),
             media_type="application/zip",
-            headers=headers,
+            headers=resp_headers,
         )
     except HTTPException:
         raise
