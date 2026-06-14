@@ -400,21 +400,38 @@ async def download_asset_file(
 
     try:
         presigned = presign_get(bucket, oss_key, expires=60)
+        logger.info("streaming_asset", asset_id=asset_id, key=oss_key)
+
+        # Verify the presigned URL is reachable before streaming
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as probe:
+            head = await probe.head(presigned)
+            if head.status_code >= 400:
+                logger.error("presigned_fetch_failed", asset_id=asset_id, status=head.status_code)
+                raise HTTPException(502, "OSS 读取失败")
+
         async def stream_from_presigned():
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, read=120.0)) as client:
                 async with client.stream("GET", presigned) as resp:
-                    if resp.status_code >= 400:
-                        raise HTTPException(502, "OSS 读取失败")
                     async for chunk in resp.aiter_bytes(65536):
                         yield chunk
+
+        content_length = head.headers.get("Content-Length")
+        headers = {
+            "Content-Disposition": f'attachment; filename="{name}.zip"',
+        }
+        if content_length:
+            headers["Content-Length"] = content_length
 
         return StreamingResponse(
             stream_from_presigned(),
             media_type="application/zip",
-            headers={
-                "Content-Disposition": f'attachment; filename="{name}.zip"',
-            },
+            headers=headers,
         )
+    except HTTPException:
+        raise
+    except httpx.TimeoutException:
+        logger.error("oss_stream_timeout", asset_id=asset_id)
+        raise HTTPException(504, "OSS 响应超时")
     except Exception as e:
         logger.error("oss_stream_failed", asset_id=asset_id, error=str(e))
         raise HTTPException(502, "OSS 读取失败")
