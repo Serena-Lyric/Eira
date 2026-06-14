@@ -10,10 +10,11 @@ export default defineConfig({
   resolve: {
     extensions: [".ts", ".js", ".mjs", ".json", ".vue"],
     alias: {
+      "@shared/live2d": path.resolve(__dirname, "../shared/live2d"),
       // Vendored Cubism SDK for Web 5 Framework (copied into the repo).
       "@framework": path.resolve(__dirname, "src/live2d-framework"),
     },
   },
-  server: { port: 5173, proxy: { "/api": { target: "http://localhost:8000", rewrite: (path: string) => path.replace(/^\/api/, "") } } },
+  server: { port: 5173, proxy: { "/api": { target: "http://localhost:8000", rewrite: (path: string) => path.replace(/^\/api/, "") }, "/oss": { target: "http://localhost:9000", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/oss/, "") } } },
   test: { environment: "happy-dom", globals: true },
 })
