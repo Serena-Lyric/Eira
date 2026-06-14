@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_db_session, require_admin, check_write_rate_limit, check_upload_rate_limit
 from app.domain.identity.models import User
 from app.domain.persona.quota import check_quota, QUOTAS
-from app.infra.oss import get_oss_client
+
 
 logger = structlog.get_logger(__name__)
 
@@ -371,7 +371,7 @@ async def get_asset_download_url(
     return {"url": url, "expires_in": 3600}
 
 
-# ── Download (streaming file) ───────────────────────────────────────────
+# ── Download (redirect to presigned URL) ────────────────────────────────
 
 
 @router.get("/{asset_id}/file")
@@ -380,35 +380,29 @@ async def download_asset_file(
     _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Stream the raw asset file from OSS.
+    """Redirect to presigned OSS URL via Vite proxy.
 
-    Used by the admin frontend to download Live2D model zips directly
-    from the backend, avoiding Vite proxy → MinIO signed URL issues.
+    The browser follows the 307 redirect through the Vite /oss/ proxy to
+    MinIO, avoiding backend-to-MinIO connectivity issues (boto3 get_object
+    SignatureDoesNotMatch with Docker MinIO on Windows).
     """
     result = await db.execute(
-        text("SELECT oss_key, kind, name FROM assets WHERE id = :id"),
+        text("SELECT oss_key, kind FROM assets WHERE id = :id"),
         {"id": asset_id},
     )
     row = result.fetchone()
     if not row:
         raise HTTPException(404, "资源不存在")
 
-    oss_key, kind, name = row[0], row[1], row[2]
+    oss_key, kind = row[0], row[1]
     bucket = BUCKETS.get(kind, "eira-backgrounds")
 
-    try:
-        s3_response = get_oss_client().get_object(Bucket=bucket, Key=oss_key)
-        return StreamingResponse(
-            s3_response["Body"].iter_chunks(),
-            media_type="application/zip",
-            headers={
-                "Content-Disposition": f'attachment; filename="{name}.zip"',
-                "Content-Length": str(s3_response["ContentLength"]),
-            },
-        )
-    except Exception as e:
-        logger.error("oss_stream_failed", asset_id=asset_id, error=str(e))
-        raise HTTPException(502, "OSS 读取失败")
+    from app.infra.oss import presign_get
+    from fastapi.responses import RedirectResponse
+
+    presigned = presign_get(bucket, oss_key, expires=60)
+    proxy_url = presigned.replace("http://localhost:9000/", "/oss/")
+    return RedirectResponse(url=proxy_url, status_code=307)
 
 
 # ── Cleanup test artifacts ───────────────────────────────────────────────
