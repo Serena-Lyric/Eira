@@ -12,7 +12,9 @@
     "isolatedModules": true,
     "baseUrl": ".",
     "paths": {
-      "@framework/*": ["src/live2d-framework/*"]
+      "@framework/*": ["src/live2d-framework/*"],
+      "@shared/*": ["../shared/*"],
+      "jszip": ["node_modules/jszip"]
     }
   },
   "include": [
