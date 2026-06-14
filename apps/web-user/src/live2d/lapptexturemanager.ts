@@ -6,6 +6,8 @@
  * that can be found at https://www.live2d.com/eula/live2d-open-software-license-agreement_en.html.
  */
 
+import { createLive2DLoader } from '@shared/live2d/live2dLoader'
+const _textureLoader = createLive2DLoader()
 import { LAppGlManager } from './lappglmanager';
 
 /**
@@ -51,98 +53,78 @@ export class LAppTextureManager {
         // 2回目以降はキャッシュが使用される(待ち時間なし)
         // WebKitでは同じImageのonloadを再度呼ぶには再インスタンスが必要
         // 詳細：https://stackoverflow.com/a/5024181
-        this._textures[i].img = new Image();
-        this._textures[i].img.addEventListener(
-          'load',
-          (): void => callback(this._textures[i]),
-          {
-            passive: true
-          }
-        );
-        this._textures[i].img.src = fileName;
+        const cached = this._textures[i]
+        _textureLoader.textureViaFetch(fileName).then(img => {
+          cached.img = img
+          callback(cached)
+        }).catch(() => {
+          // 纹理加载失败，静默跳过（与原有 Image.src onerror 行为一致）
+        })
         return;
       }
     }
 
-    // データのオンロードをトリガーにする
-    const img = new Image();
-    img.addEventListener(
-      'load',
-      (): void => {
-        // テクスチャオブジェクトの作成
-        const tex: WebGLTexture = this._glManager.getGl().createTexture();
+    // データのオンロードをトリガーにする（fetch 拦截器経由）
+    _textureLoader.textureViaFetch(fileName).then(img => {
+      // テクスチャオブジェクトの作成
+      const tex: WebGLTexture = this._glManager.getGl().createTexture();
 
-        // テクスチャを選択
-        this._glManager
-          .getGl()
-          .bindTexture(this._glManager.getGl().TEXTURE_2D, tex);
+      // テクスチャを選択
+      this._glManager.getGl().bindTexture(this._glManager.getGl().TEXTURE_2D, tex);
 
-        // テクスチャにピクセルを書き込む
-        this._glManager
-          .getGl()
-          .texParameteri(
-            this._glManager.getGl().TEXTURE_2D,
-            this._glManager.getGl().TEXTURE_MIN_FILTER,
-            this._glManager.getGl().LINEAR_MIPMAP_LINEAR
-          );
-        this._glManager
-          .getGl()
-          .texParameteri(
-            this._glManager.getGl().TEXTURE_2D,
-            this._glManager.getGl().TEXTURE_MAG_FILTER,
-            this._glManager.getGl().LINEAR
-          );
+      // テクスチャにピクセルを書き込む
+      this._glManager.getGl().texParameteri(
+        this._glManager.getGl().TEXTURE_2D,
+        this._glManager.getGl().TEXTURE_MIN_FILTER,
+        this._glManager.getGl().LINEAR_MIPMAP_LINEAR
+      );
+      this._glManager.getGl().texParameteri(
+        this._glManager.getGl().TEXTURE_2D,
+        this._glManager.getGl().TEXTURE_MAG_FILTER,
+        this._glManager.getGl().LINEAR
+      );
 
-        // Premult処理を行わせる
-        if (usePremultiply) {
-          this._glManager
-            .getGl()
-            .pixelStorei(
-              this._glManager.getGl().UNPACK_PREMULTIPLY_ALPHA_WEBGL,
-              1
-            );
+      // Premult処理を行わせる
+      if (usePremultiply) {
+        this._glManager.getGl().pixelStorei(
+          this._glManager.getGl().UNPACK_PREMULTIPLY_ALPHA_WEBGL,
+          1
+        );
+      }
+
+      // テクスチャにピクセルを書き込む
+      this._glManager.getGl().texImage2D(
+        this._glManager.getGl().TEXTURE_2D,
+        0,
+        this._glManager.getGl().RGBA,
+        this._glManager.getGl().RGBA,
+        this._glManager.getGl().UNSIGNED_BYTE,
+        img
+      );
+
+      // ミップマップを生成
+      this._glManager.getGl().generateMipmap(this._glManager.getGl().TEXTURE_2D);
+
+      // テクスチャをバインド
+      this._glManager.getGl().bindTexture(this._glManager.getGl().TEXTURE_2D, null);
+
+      const textureInfo: TextureInfo = new TextureInfo();
+      if (textureInfo != null) {
+        textureInfo.fileName = fileName;
+        textureInfo.width = img.width;
+        textureInfo.height = img.height;
+        textureInfo.id = tex;
+        textureInfo.img = img;
+        textureInfo.usePremultply = usePremultiply;
+        if (this._textures != null) {
+          this._textures.push(textureInfo);
         }
+      }
 
-        // テクスチャにピクセルを書き込む
-        this._glManager
-          .getGl()
-          .texImage2D(
-            this._glManager.getGl().TEXTURE_2D,
-            0,
-            this._glManager.getGl().RGBA,
-            this._glManager.getGl().RGBA,
-            this._glManager.getGl().UNSIGNED_BYTE,
-            img
-          );
-
-        // ミップマップを生成
-        this._glManager
-          .getGl()
-          .generateMipmap(this._glManager.getGl().TEXTURE_2D);
-
-        // テクスチャをバインド
-        this._glManager
-          .getGl()
-          .bindTexture(this._glManager.getGl().TEXTURE_2D, null);
-
-        const textureInfo: TextureInfo = new TextureInfo();
-        if (textureInfo != null) {
-          textureInfo.fileName = fileName;
-          textureInfo.width = img.width;
-          textureInfo.height = img.height;
-          textureInfo.id = tex;
-          textureInfo.img = img;
-          textureInfo.usePremultply = usePremultiply;
-          if (this._textures != null) {
-            this._textures.push(textureInfo);
-          }
-        }
-
-        callback(textureInfo);
-      },
-      { passive: true }
-    );
-    img.src = fileName;
+      callback(textureInfo);
+    }).catch(() => {
+      // 纹理加载失败，静默跳过
+    });
   }
 
   /**

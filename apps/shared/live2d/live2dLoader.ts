@@ -5,6 +5,8 @@
  * 非 Vue 依赖的纯工具模块，web-user 和 web-admin 的 composable 各自包装。
  */
 
+import JSZip from 'jszip'
+
 const DB_NAME = 'eira-live2d-cache'
 const DB_VERSION = 1
 const STORE_NAME = 'model-files'
@@ -220,7 +222,6 @@ export function createLive2DLoader(): Live2DLoader {
     const zipData = await response.arrayBuffer()
 
     // 3. JSZip 解压
-    const JSZip = (await import('jszip')).default
     const zip = await JSZip.loadAsync(zipData)
 
     const rawFiles: Array<{ path: string; data: ArrayBuffer }> = []
