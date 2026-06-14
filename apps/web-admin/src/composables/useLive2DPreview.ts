@@ -3,6 +3,7 @@ import { LAppDelegate } from '../live2d/lappdelegate'
 import * as LAppDefine from '../live2d/lappdefine'
 import { createLive2DLoader } from '@shared/live2d/live2dLoader'
 import type { ExtractedModel, BlobBase } from '@shared/live2d/live2dLoader'
+import { useAuthStore } from '../stores/auth'
 
 const loader = createLive2DLoader()
 
@@ -412,7 +413,10 @@ export function useLive2DPreview() {
     try {
       // Download via backend streaming endpoint, extract via shared loader
       const dlUrl = `/api/admin/assets/${assetId}/file`
-      const extracted: ExtractedModel = await loader.downloadAndExtract(dlUrl, String(assetId), { cache: false })
+      const headers: Record<string, string> = {}
+      const token = useAuthStore().accessToken
+      if (token) headers['Authorization'] = `Bearer ${token}`
+      const extracted: ExtractedModel = await loader.downloadAndExtract(dlUrl, String(assetId), { cache: false, headers })
 
       // Create virtual base + install fetch interceptor
       const blobBase: BlobBase = loader.createBlobBase(extracted.files, extracted.model3Path)

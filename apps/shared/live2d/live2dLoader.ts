@@ -14,6 +14,8 @@ const STORE_NAME = 'model-files'
 export interface Live2DLoaderOptions {
   /** 是否使用 IndexedDB 缓存（web-user: true, web-admin: false） */
   cache?: boolean
+  /** 自定义 HTTP 请求头（如 Authorization） */
+  headers?: Record<string, string>
 }
 
 export interface ExtractedModel {
@@ -215,7 +217,11 @@ export function createLive2DLoader(): Live2DLoader {
     }
 
     // 2. 下载 zip
-    const response = await fetch(url)
+    const fetchOpts: RequestInit = {}
+    if (options?.headers) {
+      fetchOpts.headers = options.headers
+    }
+    const response = await fetch(url, fetchOpts)
     if (!response.ok) {
       throw new Error(`下载模型失败: HTTP ${response.status}`)
     }
