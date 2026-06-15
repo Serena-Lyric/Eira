@@ -1,5 +1,5 @@
 <script setup lang="tsx">
-import { ref, computed, onMounted, watch, h } from 'vue'
+import { ref, computed, onMounted, watch, h, type Ref } from 'vue'
 import {
   NDataTable,
   NButton,
@@ -21,11 +21,14 @@ import { useDashboard } from '../composables/useDashboard'
 import { useAppConfig } from '../composables/useAppConfig'
 import { useLive2DPreview } from '../composables/useLive2DPreview'
 import { personaConfigApi, personaApi, knowledgeApi, assetApi } from '../services/api'
+import { useAuthStore } from '../stores/auth'
 import type { TimeRange } from '../composables/useDashboard'
 import type { MotionOption, Persona, PersonaCreate, KnowledgeDocument, ChunkInfo, DocumentDetail, Asset } from '../services/types'
 import type { UploadFileInfo } from 'naive-ui'
 
 const message = useMessage()
+const auth = useAuthStore()
+const currentUser = computed(() => auth.user)
 
 // ── Dashboard composable ──────────────────────────────────────────
 const {
@@ -33,6 +36,7 @@ const {
   metrics,
   topQuestions,
   satisfactionTrend,
+  satisfactionTrendMonth,
   wordCloud,
   sentiment,
   feedback,
@@ -44,10 +48,48 @@ const {
 // ── App config composable ─────────────────────────────────────────
 const {
   config,
+  error: configError,
   saving: configSaving,
-  savedMessage: configSaved,
   save: saveConfig,
 } = useAppConfig()
+
+// §7 fix: Independent save state per view
+const apiSaved = ref(false)
+const apiSaving = ref(false)
+const apiError = ref<string | null>(null)
+const settingsSaved = ref(false)
+const settingsSaving = ref(false)
+const settingsError = ref<string | null>(null)
+
+async function saveApiConfig() {
+  apiSaving.value = true
+  apiError.value = null
+  apiSaved.value = false
+  try {
+    await saveConfig()
+    apiSaved.value = true
+    setTimeout(() => { apiSaved.value = false }, 3000)
+  } catch (e: any) {
+    apiError.value = e?.response?.data?.detail || e?.message || '保存失败'
+  } finally {
+    apiSaving.value = false
+  }
+}
+
+async function saveSettingsConfig() {
+  settingsSaving.value = true
+  settingsError.value = null
+  settingsSaved.value = false
+  try {
+    await saveConfig()
+    settingsSaved.value = true
+    setTimeout(() => { settingsSaved.value = false }, 3000)
+  } catch (e: any) {
+    settingsError.value = e?.response?.data?.detail || e?.message || '保存失败'
+  } finally {
+    settingsSaving.value = false
+  }
+}
 
 // ── Live2D Preview composable ────────────────────────────────────
 const {
@@ -141,16 +183,20 @@ async function savePersonaConfig() {
   if (personaConfigTimer) clearTimeout(personaConfigTimer)
   personaConfigTimer = setTimeout(async () => {
     try {
+      // active_model_id 统一存 OSS key（user 端只认 OSS key）。
+      // selectedModel 是显示名（UI 选中态），这里转换成对应模型的 ossKey 再持久化。
+      const sel: any = l2dModels.value.find((m: any) => m.id === selectedModel.value)
+      const modelOssKey: string | undefined = sel?.ossKey || undefined
       await personaConfigApi.update({
-        active_model_id: selectedModel.value,
+        active_model_id: modelOssKey,
         idle_motion_group: selectedIdleMotion.value?.group ?? null,
         idle_motion_index: selectedIdleMotion.value?.index ?? null,
         offline_idle_motion_group: selectedOfflineMotion.value?.group ?? null,
         offline_idle_motion_index: selectedOfflineMotion.value?.index ?? null,
         default_speech_rate: adminSpeechRate.value,
       })
-    } catch {
-      // 静默失败
+    } catch (err: any) {
+      console.error('[savePersonaConfig] Failed:', err?.response?.data?.detail || err?.message || err)
     }
   }, 500)
 }
@@ -159,7 +205,14 @@ async function savePersonaConfig() {
 async function loadPersonaConfig() {
   try {
     const cfg = await personaConfigApi.get()
-    if (cfg.active_model_id) selectedModel.value = cfg.active_model_id
+    if (cfg.active_model_id) {
+      // active_model_id 现在统一是 OSS key。UI 选中态需要显示名，这里按 ossKey 映射回显示名；
+      // 映射不到（如旧显示名格式 / 模型列表未就绪）时，watch(l2dActiveModelId) 会在加载成功后兜底修正。
+      const m: any = l2dModels.value.find((x: any) => x.ossKey === cfg.active_model_id || x.id === cfg.active_model_id)
+      selectedModel.value = m?.id ?? cfg.active_model_id
+      // 真正切换 Live2D 模型（changeModel 四向匹配，兼容 ossKey 和旧显示名）
+      setTimeout(() => l2dChangeModel(cfg.active_model_id!), 1500)
+    }
     if (cfg.idle_motion_group != null) {
       selectedIdleMotion.value = {
         group: cfg.idle_motion_group,
@@ -180,6 +233,9 @@ async function loadPersonaConfig() {
     }
     if (typeof cfg.default_speech_rate === 'number') {
       adminSpeechRate.value = cfg.default_speech_rate
+    }
+    if (cfg.default_background_url) {
+      bgUrl.value = cfg.default_background_url
     }
   } catch {
     // 后端未就绪，使用默认值
@@ -215,29 +271,32 @@ const visibleFeedback = computed(() =>
 // ── Feedback reply debounce ──────────────────────────────────────────
 const replySending = ref(false)
 
-const bgUrl = ref('https://images.unsplash.com/photo-1554797589-7241bb691973?q=80&w=1080&h=2340&fit=crop')
+const bgUrl = ref('')  // 无背景时显示蓝色占位（CSS fallback）
 const fileInput = ref<HTMLInputElement | null>(null)
+const live2dUploadRef = ref<{ clearFiles: () => void } | null>(null)
+const bgUploadRef = ref<{ clearFiles: () => void } | null>(null)
 
 // ── Derived: formatted metrics for template ───────────────────────
-const fmtVisitors = computed(() => metrics.value.total_visitors.toLocaleString())
-const fmtConversations = computed(() => metrics.value.total_conversations.toLocaleString())
-const fmtLatency = computed(() => `${(metrics.value.avg_response_latency_ms / 1000).toFixed(1)}s`)
-const fmtSatisfaction = computed(() => `${metrics.value.satisfaction_pct.toFixed(1)}%`)
+const safeMetrics = computed(() => metrics.value || { total_visitors: 0, total_conversations: 0, avg_response_latency_ms: 0, satisfaction_pct: 0, visitors_change_pct: 0, conversations_change_pct: 0, latency_change_ms: 0, satisfaction_change_pct: 0 })
+const fmtVisitors = computed(() => (safeMetrics.value.total_visitors ?? 0).toLocaleString())
+const fmtConversations = computed(() => (safeMetrics.value.total_conversations ?? 0).toLocaleString())
+const fmtLatency = computed(() => `${((safeMetrics.value.avg_response_latency_ms ?? 0) / 1000).toFixed(1)}s`)
+const fmtSatisfaction = computed(() => `${(safeMetrics.value.satisfaction_pct ?? 0).toFixed(1)}%`)
 const fmtVisitorsChange = computed(() => {
-  const v = metrics.value.visitors_change_pct
+  const v = safeMetrics.value.visitors_change_pct ?? 0
   return `环比${v >= 0 ? '＋' : ''}${v.toFixed(1)}%`
 })
 const fmtConversationsChange = computed(() => {
-  const v = metrics.value.conversations_change_pct
+  const v = safeMetrics.value.conversations_change_pct ?? 0
   return `环比${v >= 0 ? '＋' : ''}${v.toFixed(1)}%`
 })
 const fmtLatencyChange = computed(() => {
-  const v = metrics.value.latency_change_ms
-  return `环比${v >= 0 ? '＋' : ''}${(v / 1000).toFixed(1)}s`
+  const v = safeMetrics.value.latency_change_ms ?? 0
+  return `${v >= 0 ? '＋' : ''}${(v / 1000).toFixed(1)}s`
 })
 const fmtSatisfactionChange = computed(() => {
-  const v = metrics.value.satisfaction_change_pct
-  return `环比${v >= 0 ? '＋' : ''}${v.toFixed(1)}%`
+  const v = safeMetrics.value.satisfaction_change_pct ?? 0
+  return `${v >= 0 ? '＋' : ''}${v.toFixed(1)}%`
 })
 
 // ── Derived: chart data ───────────────────────────────────────────
@@ -245,6 +304,41 @@ const sentimentDonutDash = computed(() => {
   const p = sentiment.value.positive_pct
   return `${p * 0.9},100`
 })
+
+function _trendComputed(pts: Ref<{date: string; score: number}[]>, x0: number) {
+  const x1 = 95, y0 = 8, y1 = 40, smin = 0, smax = 100
+  const polyline = computed(() => {
+    const items = pts.value
+    if (!items.length) return ''
+    return items.map((p, i) => {
+      const x = x0 + (i / Math.max(items.length - 1, 1)) * (x1 - x0)
+      const y = y1 - ((p.score - smin) / (smax - smin)) * (y1 - y0)
+      return `${i === 0 ? '' : ' '}${x.toFixed(1)},${y.toFixed(1)}`
+    }).join('')
+  })
+  const path = computed(() => polyline.value ? `M${x0},40 L${polyline.value} L95,40 Z` : '')
+  const dates = computed(() => pts.value.map(p => p.date))
+  const circles = computed(() => {
+    const items = pts.value
+    return items.map((p, i) => {
+      const x = x0 + (i / Math.max(items.length - 1, 1)) * (x1 - x0)
+      const y = y1 - ((p.score - smin) / (smax - smin)) * (y1 - y0)
+      return { cx: x.toFixed(1), cy: y.toFixed(1), date: p.date, score: p.score, index: i }
+    })
+  })
+  return { polyline, path, dates, circles }
+}
+
+// Week trend (card) — x0=15 aligned with card grid
+const trendPoints = computed(() => satisfactionTrend.value)
+const { polyline: trendPolyline, path: trendPath, dates: trendDates, circles: trendCircles } = _trendComputed(trendPoints, 15)
+
+// Month trend (expanded) — x0=10 aligned with expanded grid
+const trendPointsMonth = computed(() => satisfactionTrendMonth.value)
+const { polyline: trendPolylineMonth, path: trendPathMonth, dates: trendDatesMonth, circles: trendCirclesMonth } = _trendComputed(trendPointsMonth, 10)
+
+// Hover tooltip state for expanded detail
+const trendTooltip = ref<{ cx: string; cy: string; date: string; score: number } | null>(null)
 
 // ── Actions ───────────────────────────────────────────────────────
 function setTab(tab: string) {
@@ -258,23 +352,38 @@ function toggleBothPanels() {
   else { isLeftPanelOpen.value = true; isRightPanelOpen.value = true }
 }
 function toggleCard(cardId: string) { expandedCard.value = expandedCard.value === cardId ? null : cardId }
-function handleBgUpload(e: Event) {
+async function handleBgUpload(e: Event) {
   const t = e.target as HTMLInputElement
-  if (t.files?.[0]) {
-    const r = new FileReader()
-    r.onload = (ev) => { if (ev.target?.result) bgUrl.value = ev.target.result as string }
-    r.readAsDataURL(t.files[0]); t.value = ''
-    console.log('API: POST /api/v1/backgrounds')
+  const file = t.files?.[0]
+  if (!file) return
+
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const result = await assetApi.uploadBackground(formData)
+    message.success('背景图片上传成功')
+    // 设为默认背景
+    if (result.id) {
+      await assetApi.setDefault(result.id)
+      await loadPersonaConfig()  // 刷新配置以更新 bgUrl
+    }
+    t.value = ''
+    await loadAssets()
+  } catch (err: any) {
+    message.error(err?.response?.data?.detail || '上传失败')
   }
 }
+const datePickerYear = computed(() => new Date().getFullYear())
+const datePickerMonth = computed(() => new Date().getMonth() + 1)
 function selectMockDate(d: number) {
   if (tempStartDate.value === null) tempStartDate.value = d
   else if (tempEndDate.value === null) { if (d >= tempStartDate.value!) tempEndDate.value = d; else { tempEndDate.value = tempStartDate.value; tempStartDate.value = d } }
   else { tempStartDate.value = d; tempEndDate.value = null }
 }
 function confirmDateRange() {
-  if (tempStartDate.value && tempEndDate.value) dateRangeText.value = `2026.05.${String(tempStartDate.value).padStart(2,'0')} - 05.${String(tempEndDate.value).padStart(2,'0')}`
-  else if (tempStartDate.value) dateRangeText.value = `2026.05.${String(tempStartDate.value).padStart(2,'0')}`
+  const y = datePickerYear.value, m = String(datePickerMonth.value).padStart(2, '0')
+  if (tempStartDate.value && tempEndDate.value) dateRangeText.value = `${y}.${m}.${String(tempStartDate.value).padStart(2,'0')} - ${m}.${String(tempEndDate.value).padStart(2,'0')}`
+  else if (tempStartDate.value) dateRangeText.value = `${y}.${m}.${String(tempStartDate.value).padStart(2,'0')}`
   showDatePicker.value = false; activeTab.value = 'custom'
 }
 async function handleReply(idx: number) {
@@ -348,7 +457,10 @@ const personaForm = ref({
   is_default: false,
 })
 const tagsInput = ref('')
-const personaFormRules = { name: [{ required: true, message: '请输入角色名称', trigger: 'blur' }] }
+const personaFormRules = {
+  name: [{ required: true, message: '请输入角色名称', trigger: 'blur' }],
+  system_prompt: [{ required: true, message: '请输入系统提示词（至少10个字符）', trigger: 'blur', min: 10 }],
+}
 
 // JSON import
 const jsonFileInput = ref<HTMLInputElement | null>(null)
@@ -469,7 +581,7 @@ async function handlePersonaSetDefault(row: Persona) {
 async function handlePersonaDelete(row: Persona) {
   try {
     await personaApi.delete(row.id)
-    message.success(`"${row.name}" 已删除`)
+    message.success(`"${row.name}" 已永久删除`)
     await loadPersonas()
   } catch { message.error('删除失败') }
 }
@@ -479,23 +591,29 @@ async function handlePersonaDelete(row: Persona) {
 // ══════════════════════════════════════════════════════════════════════
 
 const knowledgeCols = [
-  { title: '文档名称', key: 'name' },
+  { title: '文档名称', key: 'filename' },
   { title: '大小', key: 'size_display' },
   {
     title: '状态',
     key: 'status',
     render(row: KnowledgeDocument) {
-      const tagType = row.status === 'indexed' ? 'success' : row.status === 'pending' ? 'warning' : 'info'
-      const label = row.status === 'processing' ? `Processing (${row.progress ?? 0}%)` : row.status === 'indexed' ? 'Indexed' : 'Pending'
-      return h(NTag, { type: tagType }, { default: () => label })
+      const statusMap: Record<string, { type: 'success' | 'warning' | 'info' | 'error'; label: string }> = {
+        ready: { type: 'success', label: 'Ready' },
+        pending: { type: 'warning', label: 'Pending' },
+        processing: { type: 'info', label: `Processing (${row.progress ?? 0}%)` },
+        failed: { type: 'error', label: row.error ? `Failed: ${row.error.slice(0, 30)}` : 'Failed' },
+      }
+      const s = statusMap[row.status] || { type: 'info' as const, label: row.status }
+      return h(NTag, { type: s.type }, { default: () => s.label })
     },
   },
   {
     title: '操作',
     key: 'actions',
+    width: 280,
     render(row: KnowledgeDocument) {
       return (
-        <NSpace>
+        <NSpace style="flex-wrap:nowrap">
           <NButton size="small" type="primary" ghost disabled={row.status === 'processing'} onClick={() => handleVectorize(row)}>Vectorize</NButton>
           <NButton size="small" onClick={() => handleKnowledgePreview(row)}>Preview RAG</NButton>
           <NButton size="small" type="error" ghost onClick={() => handleKnowledgeDelete(row)}>Delete</NButton>
@@ -520,7 +638,16 @@ async function loadKnowledge() {
   knowledgeLoading.value = true
   knowledgeError.value = null
   try {
-    knowledgeData.value = await knowledgeApi.list()
+    const result = await knowledgeApi.list()
+    // Compute human-readable size for display
+    knowledgeData.value = (result || []).map((doc: KnowledgeDocument) => ({
+      ...doc,
+      size_display: doc.file_size
+        ? doc.file_size > 1024 * 1024
+          ? `${(doc.file_size / 1024 / 1024).toFixed(1)} MB`
+          : `${(doc.file_size / 1024).toFixed(1)} KB`
+        : '-',
+    }))
   } catch (e: any) {
     knowledgeError.value = e?.response?.data?.detail || e?.message || 'Failed to load documents'
     message.error('Failed to load knowledge base')
@@ -549,7 +676,7 @@ async function handleKnowledgeUpload(options: { file: UploadFileInfo; onFinish: 
 async function handleVectorize(row: KnowledgeDocument) {
   try {
     await knowledgeApi.reprocess(row.id)
-    message.success(`"${row.name}" 已触发重新向量化`)
+    message.success(`"${row.filename}" 已触发重新向量化`)
     await loadKnowledge()
   } catch (e: any) {
     message.error(e?.response?.data?.detail || '向量化失败')
@@ -574,7 +701,7 @@ async function handleKnowledgePreview(row: KnowledgeDocument) {
 async function handleKnowledgeDelete(row: KnowledgeDocument) {
   try {
     await knowledgeApi.delete(row.id)
-    message.success(`"${row.name}" 已删除`)
+    message.success(`"${row.filename}" 已删除`)
     await loadKnowledge()
   } catch { message.error('删除失败') }
 }
@@ -645,11 +772,16 @@ async function handleAssetUpload(options: { file: UploadFileInfo; onFinish: () =
     if (options.file.file) formData.append('file', options.file.file)
     if (type === 'live2d') await assetApi.uploadLive2D(formData)
     else await assetApi.uploadBackground(formData)
-    message.success('Asset uploaded successfully')
+    message.success('上传成功')
     options.onFinish()
+    // 清空上传列表
+    if (type === 'live2d') live2dUploadRef.value?.clearFiles()
+    else bgUploadRef.value?.clearFiles()
     await loadAssets()
-  } catch {
-    message.error('Upload failed')
+  } catch (err: any) {
+    const detail = err?.response?.data?.detail || err?.message || '上传失败'
+    const status = err?.response?.status ? ` [HTTP ${err.response.status}]` : ''
+    message.error(`上传失败: ${detail}${status}`)
     options.onError()
   } finally {
     assetUploading.value = false
@@ -711,12 +843,12 @@ onMounted(() => {
         <div class="user-glass">
           <button class="bell-btn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#6B7280" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></button>
           <div class="text-avatar">A</div>
-          <span class="username">管理员</span>
+          <span class="username">{{ currentUser?.display_name || '管理员' }}</span>
         </div>
       </header>
 
       <!-- ==================== DASHBOARD VIEW ==================== -->
-      <main v-if="currentView==='dashboard'" class="main-container">
+      <main v-show="currentView==='dashboard'" class="main-container">
         <!-- Left peek handle -->
         <div class="peek left-peek" :class="{show:!isLeftPanelOpen}" @click="isLeftPanelOpen=true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></div>
 
@@ -743,7 +875,7 @@ onMounted(() => {
               <div class="card-name">{{ (currentModelMeta?.displayName || selectedModel)  }}</div>
             </div>
           </div>
-          <div class="setting-tabs"><div class="stab active">外观</div><div class="stab">服装</div><div class="stab">声音</div></div>
+          <div class="setting-tabs"><div class="stab active">外观</div><div class="stab" title="待后续版本实现">服装</div><div class="stab" title="待后续版本实现">声音</div></div>
           <div class="setting-list">
             <div class="sitem"><span>Live2D 模型</span><span class="sval model-link" @click="showModelSelector=!showModelSelector">{{ selectedModel }}</span></div>
             <!-- Model selector dropdown -->
@@ -784,9 +916,9 @@ onMounted(() => {
           </div>
           <div class="center-actions">
             <button class="act-pill active" @click="toggleBothPanels">形象预览</button>
-            <button class="act-pill">动作设置</button>
-            <button class="act-pill">语音测试</button>
-            <button class="act-pill">更多设置</button>
+            <button class="act-pill" disabled title="待后续版本实现">动作设置</button>
+            <button class="act-pill" disabled title="待后续版本实现">语音测试</button>
+            <button class="act-pill" disabled title="待后续版本实现">更多设置</button>
           </div>
         </section>
 
@@ -808,7 +940,7 @@ onMounted(() => {
               <div class="date-picker-wrap">
                 <button class="dp-btn" :class="{active:activeTab==='custom'}" @click="showDatePicker=!showDatePicker"><span>{{ dateRangeText }}</span> <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>
                 <div v-if="showDatePicker" class="cal-drop">
-                  <div class="cal-month">2026年 5月</div>
+                  <div class="cal-month">{{ datePickerYear }}年 {{ datePickerMonth }}月</div>
                   <div class="cal-grid"><div class="cal-dow" v-for="d in ['日','一','二','三','四','五','六']" :key="d">{{d}}</div><div class="cal-empty" v-for="i in 5" :key="'e'+i"></div><div v-for="d in 31" :key="d" class="cal-day" :class="{sel:tempStartDate===d||tempEndDate===d,mid:tempStartDate&&tempEndDate&&d>tempStartDate&&d<tempEndDate}" @click="selectMockDate(d)">{{d}}</div></div>
                   <div class="cal-btns"><button @click="showDatePicker=false">取消</button><button class="ok" @click="confirmDateRange">确认</button></div>
                 </div>
@@ -816,10 +948,10 @@ onMounted(() => {
             </div>
 
             <div class="metric-grid">
-              <div class="mcard"><div class="mt">服务人次</div><div class="mv">{{ fmtVisitors }}</div><div class="mtr" :class="metrics.visitors_change_pct >= 0 ? 'up' : 'dn'"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> {{ fmtVisitorsChange }}</div></div>
-              <div class="mcard"><div class="mt">交互对话数</div><div class="mv">{{ fmtConversations }}</div><div class="mtr" :class="metrics.conversations_change_pct >= 0 ? 'up' : 'dn'"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> {{ fmtConversationsChange }}</div></div>
-              <div class="mcard"><div class="mt">平均响应延迟</div><div class="mv">{{ fmtLatency }}</div><div class="mtr" :class="metrics.latency_change_ms <= 0 ? 'up' : 'dn'"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg> {{ fmtLatencyChange }}</div></div>
-              <div class="mcard"><div class="mt">用户满意度</div><div class="mv">{{ fmtSatisfaction }}</div><div class="mtr" :class="metrics.satisfaction_change_pct >= 0 ? 'up' : 'dn'"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> {{ fmtSatisfactionChange }}</div></div>
+              <div class="mcard"><div class="mt">服务人次</div><div class="mv">{{ fmtVisitors }}</div><div class="mtr" :class="safeMetrics.visitors_change_pct >= 0 ? 'up' : 'dn'"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> {{ fmtVisitorsChange }}</div></div>
+              <div class="mcard"><div class="mt">交互对话数</div><div class="mv">{{ fmtConversations }}</div><div class="mtr" :class="safeMetrics.conversations_change_pct >= 0 ? 'up' : 'dn'"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> {{ fmtConversationsChange }}</div></div>
+              <div class="mcard"><div class="mt">平均响应延迟</div><div class="mv">{{ fmtLatency }}</div><div class="mtr" :class="safeMetrics.latency_change_ms <= 0 ? 'up' : 'dn'"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg> {{ fmtLatencyChange }}</div></div>
+              <div class="mcard"><div class="mt">用户满意度</div><div class="mv">{{ fmtSatisfaction }}</div><div class="mtr" :class="safeMetrics.satisfaction_change_pct >= 0 ? 'up' : 'dn'"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> {{ fmtSatisfactionChange }}</div></div>
             </div>
 
             <!-- 可点击展开卡片行 -->
@@ -829,13 +961,23 @@ onMounted(() => {
               <!-- 满意度折线 -->
               <div class="cchart" @click="toggleCard('trend')"><h3>用户满意度趋势 (%)</h3>
                 <svg viewBox="0 0 100 60" preserveAspectRatio="none" style="width:100%;flex:1;overflow:visible">
-                  <g stroke="rgba(0,0,0,0.05)" stroke-width=".5"><line x1="15" y1="12" x2="95" y2="12"/><line x1="15" y1="27" x2="95" y2="27"/><line x1="15" y1="42" x2="95" y2="42"/></g>
-                  <g fill="#9CA3AF" font-size="4" text-anchor="end"><text x="13" y="13.5">100</text><text x="13" y="28.5">90</text><text x="13" y="43.5">80</text></g>
-                  <g fill="#9CA3AF" font-size="4" text-anchor="middle"><text x="25" y="52">05.25</text><text x="45" y="52">05.26</text><text x="65" y="52">05.27</text><text x="85" y="52">05.28</text></g>
+                  <g stroke="rgba(0,0,0,0.05)" stroke-width=".5">
+                    <line x1="15" y1="8" x2="95" y2="8"/><line x1="15" y1="16" x2="95" y2="16"/>
+                    <line x1="15" y1="24" x2="95" y2="24"/><line x1="15" y1="32" x2="95" y2="32"/>
+                    <line x1="15" y1="40" x2="95" y2="40"/>
+                  </g>
+                  <g fill="#9CA3AF" font-size="4" text-anchor="end">
+                    <text x="13" y="9">100</text><text x="13" y="17">75</text>
+                    <text x="13" y="25">50</text><text x="13" y="33">25</text>
+                    <text x="13" y="41">0</text>
+                  </g>
+                  <g fill="#9CA3AF" font-size="4" text-anchor="middle">
+                    <text v-for="(d, i) in trendDates" :key="d" :x="15 + (i / Math.max(trendDates.length - 1, 1)) * 80" y="46">{{ d.slice(5) }}</text>
+                  </g>
                   <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(59,130,246,0.25)"/><stop offset="100%" stop-color="rgba(59,130,246,0)"/></linearGradient></defs>
-                  <path d="M15,40 L15,15 L35,22 L55,10 L75,18 L95,8 L95,40 Z" fill="url(#g2)"/>
-                  <polyline points="15,15 35,22 55,10 75,18 95,8" fill="none" stroke="#3B82F6" stroke-width="1.5" stroke-linecap="round"/>
-                  <circle cx="15" cy="15" r="1.5" fill="#FFF" stroke="#3B82F6" stroke-width=".8"/><circle cx="35" cy="22" r="1.5" fill="#FFF" stroke="#3B82F6" stroke-width=".8"/><circle cx="55" cy="10" r="1.5" fill="#FFF" stroke="#3B82F6" stroke-width=".8"/><circle cx="75" cy="18" r="1.5" fill="#FFF" stroke="#3B82F6" stroke-width=".8"/><circle cx="95" cy="8" r="1.5" fill="#FFF" stroke="#3B82F6" stroke-width=".8"/>
+                  <path :d="trendPath" fill="url(#g2)"/>
+                  <polyline :points="trendPolyline" fill="none" stroke="#3B82F6" stroke-width="1.5" stroke-linecap="round"/>
+                  <circle v-for="(c, i) in trendCircles" :key="'c'+i" :cx="c.cx" :cy="c.cy" r="1.5" fill="#FFF" stroke="#3B82F6" stroke-width=".8"/>
                 </svg>
               </div>
             </div>
@@ -856,7 +998,32 @@ onMounted(() => {
               <!-- TOP5 expanded -->
               <template v-if="expandedCard==='top5'"><h2 style="margin:0 0 24px;color:#1F2937">高频问答 TOP5 · 详细</h2><div style="display:flex;flex-direction:column;gap:14px;font-size:16px"><div v-for="q in topQuestions" :key="q.rank" style="display:flex;align-items:center;gap:12px"><span :style="{background:q.rank===1?'#FEF2F2':q.rank===2?'#FFFBEB':q.rank===3?'#ECFDF5':'#F3F4F6',color:q.rank===1?'#EF4444':q.rank===2?'#F59E0B':q.rank===3?'#10B981':'#6B7280',width:'28px',height:'28px',display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'8px',fontWeight:700}">{{ q.rank }}</span><span style="flex:1;color:#374151;font-weight:600">{{ q.text }}</span><span style="color:#9CA3AF">{{ q.count }}次</span><div style="width:100px;height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div :style="{width:q.percentage + '%',background:q.rank===1?'#EF4444':q.rank===2?'#F59E0B':q.rank===3?'#10B981':'#3B82F6',height:'100%'}"/></div></div></div></template>
               <!-- Trend expanded -->
-              <template v-if="expandedCard==='trend'"><h2 style="margin:0 0 24px;color:#1F2937">用户满意度趋势 · 详细</h2><div style="flex:1;min-height:400px;width:100%"><svg viewBox="0 0 100 60" preserveAspectRatio="none" style="width:100%;height:100%"><g stroke="rgba(0,0,0,0.06)" stroke-width=".4"><line x1="10" y1="50" x2="95" y2="50"/><line x1="10" y1="38" x2="95" y2="38"/><line x1="10" y1="26" x2="95" y2="26"/><line x1="10" y1="14" x2="95" y2="14"/></g><g fill="#9CA3AF" font-size="3.5" text-anchor="end"><text x="9" y="13">100</text><text x="9" y="25">95</text><text x="9" y="37">90</text><text x="9" y="49">85</text></g><g fill="#9CA3AF" font-size="3.5" text-anchor="middle"><text x="20" y="56">05.01</text><text x="41" y="56">05.10</text><text x="62" y="56">05.20</text><text x="83" y="56">05.30</text></g><defs><linearGradient id="g3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(59,130,246,0.3)"/><stop offset="100%" stop-color="rgba(59,130,246,0)"/></linearGradient></defs><path d="M10,48 L20,40 L30,42 L40,25 L50,30 L60,15 L70,20 L80,12 L95,10 L95,50 L10,50 Z" fill="url(#g3)"/><polyline points="10,48 20,40 30,42 40,25 50,30 60,15 70,20 80,12 95,10" fill="none" stroke="#3B82F6" stroke-width="1.2"/></svg></div></template>
+              <template v-if="expandedCard==='trend'"><h2 style="margin:0 0 24px;color:#1F2937">用户满意度趋势 · 详细</h2>
+                <div style="position:relative;flex:1;min-height:400px;width:100%">
+                  <svg viewBox="0 0 100 60" preserveAspectRatio="none" style="width:100%;height:100%">
+                    <g stroke="rgba(0,0,0,0.06)" stroke-width=".4">
+                      <line x1="10" y1="40" x2="95" y2="40"/><line x1="10" y1="32" x2="95" y2="32"/>
+                      <line x1="10" y1="24" x2="95" y2="24"/><line x1="10" y1="16" x2="95" y2="16"/>
+                      <line x1="10" y1="8" x2="95" y2="8"/>
+                    </g>
+                    <g fill="#9CA3AF" font-size="4" text-anchor="end">
+                      <text x="9" y="41">0</text><text x="9" y="33">25</text>
+                      <text x="9" y="25">50</text><text x="9" y="17">75</text>
+                      <text x="9" y="9">100</text>
+                    </g>
+                    <g fill="#9CA3AF" font-size="2.5" text-anchor="middle">
+                      <template v-for="(d, i) in trendDatesMonth" :key="'ed'+i">
+                        <text v-if="i % 5 === 0 || i === trendDatesMonth.length - 1" :x="10 + (i / Math.max(trendDatesMonth.length - 1, 1)) * 85" y="44">{{ d.slice(5) }}</text>
+                      </template>
+                    </g>
+                    <defs><linearGradient id="g3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(59,130,246,0.3)"/><stop offset="100%" stop-color="rgba(59,130,246,0)"/></linearGradient></defs>
+                    <path :d="trendPathMonth" fill="url(#g3)"/>
+                    <polyline :points="trendPolylineMonth" fill="none" stroke="#3B82F6" stroke-width=".45" stroke-linecap="round"/>
+                    <circle v-for="c in trendCirclesMonth" :key="'ec'+c.index" :cx="c.cx" :cy="c.cy" r=".3" fill="#FFF" stroke="#3B82F6" stroke-width=".2" style="cursor:pointer" @mouseenter="trendTooltip = c" @mouseleave="trendTooltip = null"/>
+                  </svg>
+                  <div v-if="trendTooltip" class="trend-tooltip" :style="{ left: (parseFloat(trendTooltip.cx) / 100 * 100) + '%', top: (parseFloat(trendTooltip.cy) / 60 * 100) + '%' }">{{ trendTooltip.date }}: {{ trendTooltip.score }}%</div>
+                  </div>
+              </template>
               <!-- Cloud expanded -->
               <template v-if="expandedCard==='cloud'"><h2 style="margin:0 0 24px;color:#1F2937">游客关注词云 · 详细</h2><div class="cloud cloud-lg"><span v-for="(w, i) in wordCloud" :key="i" class="cw" :class="'c' + (Math.min(i, 6) + 1)" :style="{ fontSize: (12 + w.weight * 30) + 'px', color: w.color }">{{ w.text }}</span></div></template>
               <!-- Sentiment expanded -->
@@ -898,29 +1065,30 @@ onMounted(() => {
       </main>
 
       <!-- ==================== API CONFIG VIEW ==================== -->
-      <main v-else-if="currentView==='api'" class="settings-container">
+      <main v-show="currentView==='api'" class="settings-container">
         <div class="settings-glass-card">
           <div class="sc-hd"><h2>API 与引擎配置</h2><p>管理后端驱动所需的 AI 服务及接口参数</p></div>
           <div class="sc-body">
             <div class="srow"><div class="sinfo"><h3>LLM 引擎提供商</h3><p>切换数字人后端驱动的语言模型</p></div><select class="ssel" v-model="config.llm_provider"><option value="deepseek">DeepSeek</option><option value="tongyi">通义千问</option><option value="openai">OpenAI (兼容)</option></select></div>
             <div class="srow"><div class="sinfo"><h3>LLM 默认模型</h3><p>当前 provider 的默认模型变体</p></div><select class="ssel" v-model="config.llm_model"><option value="deepseek-chat">deepseek-chat</option><option value="deepseek-reasoner">deepseek-reasoner</option></select></div>
-            <div class="srow"><div class="sinfo"><h3>TTS 语音引擎</h3><p>数字人流式语音合成服务</p></div><select class="ssel" v-model="config.tts_engine"><option value="aliyun_nls">阿里云 NLS</option><option value="azure">Azure TTS</option><option value="xunfei">讯飞流式</option></select></div>
-            <div class="srow"><div class="sinfo"><h3>ASR 语音识别</h3><p>用户语音输入识别引擎</p></div><select class="ssel" v-model="config.asr_engine"><option value="aliyun_asr">阿里云 ASR</option><option value="xunfei_asr">讯飞流式 ASR</option><option value="whisper">Whisper (本地)</option></select></div>
-            <div class="srow"><div class="sinfo"><h3>Embedding 模型</h3><p>知识库向量化模型</p></div><select class="ssel" v-model="config.embedding_model"><option value="text-embedding-v3">text-embedding-v3</option><option value="bge-m3">BGE-M3</option><option value="openai-text-embedding-3">OpenAI text-embedding-3</option></select></div>
-            <div class="srow"><div class="sinfo"><h3>Web Search 服务</h3><p>互联网检索兜底提供商</p></div><select class="ssel" v-model="config.web_search_provider"><option value="bocha">Bocha (中文优化)</option><option value="tavily">Tavily</option></select></div>
+            <div class="srow"><div class="sinfo"><h3>TTS 语音引擎</h3><p>数字人流式语音合成服务</p></div><select class="ssel" v-model="config.tts_provider"><option value="xunfei">讯飞流式</option><option value="mock">Mock (开发用)</option></select></div>
+            <div class="srow"><div class="sinfo"><h3>ASR 语音识别</h3><p>用户语音输入识别引擎</p></div><select class="ssel" v-model="config.asr_provider"><option value="xunfei">讯飞流式 ASR</option><option value="mock">Mock (开发用)</option></select></div>
+            <div class="srow"><div class="sinfo"><h3>Embedding 模型</h3><p>知识库向量化模型</p></div><select class="ssel" v-model="config.embedding_model"><option value="text-embedding-3-small">text-embedding-3-small</option><option value="text-embedding-3-large">text-embedding-3-large</option></select></div>
+            <div class="srow"><div class="sinfo"><h3>Web Search 服务</h3><p>互联网检索兜底提供商</p></div><select class="ssel" v-model="config.search_provider"><option value="tavily">Tavily</option><option value="mock">Mock (开发用)</option></select></div>
             <div class="srow"><div class="sinfo"><h3>每日搜索配额</h3><p>Web Search 每日调用上限</p></div><input type="number" v-model.number="config.daily_search_quota" class="sinput" /></div>
             <div class="srow"><div class="sinfo"><h3>API Key 状态</h3><p>各 Provider 密钥不显示，仅展示配置与否</p></div><div style="display:flex;flex-direction:column;gap:6px;font-size:13px"><span v-for="(status, name) in config.api_key_status" :key="name" :style="{ color: status === 'configured' ? '#10B981' : '#F59E0B' }">{{ status === 'configured' ? '✅' : '⚠️' }} {{ name }}{{ status === 'missing' ? ' 未配置' : '' }}</span></div></div>
           </div>
           <div class="sc-actions">
-            <span v-if="configSaved" style="color:#10B981;margin-right:16px;font-size:14px">✓ 已保存</span>
+            <span v-if="apiError" style="color:#EF4444;margin-right:16px;font-size:14px">{{ apiError }}</span>
+            <span v-else-if="apiSaved" style="color:#10B981;margin-right:16px;font-size:14px">✓ 已保存</span>
             <button class="pbtn" @click="currentView='dashboard'">返回</button>
-            <button class="pbtn" style="margin-left:12px;background:#3B82F6" @click="saveConfig()" :disabled="configSaving">{{ configSaving ? '保存中...' : '保存配置' }}</button>
+            <button class="pbtn" style="margin-left:12px;background:#3B82F6" @click="saveApiConfig()" :disabled="apiSaving">{{ apiSaving ? '保存中...' : '保存配置' }}</button>
           </div>
         </div>
       </main>
 
       <!-- ==================== PERSONAS VIEW ==================== -->
-      <main v-else-if="currentView==='personas'" class="settings-container">
+      <main v-show="currentView==='personas'" class="settings-container">
         <div class="settings-glass-card" style="max-width:900px">
           <div class="sc-hd">
             <h2>角色卡管理</h2>
@@ -939,7 +1107,7 @@ onMounted(() => {
       </main>
 
       <!-- ==================== KNOWLEDGE VIEW ==================== -->
-      <main v-else-if="currentView==='knowledge'" class="settings-container">
+      <main v-show="currentView==='knowledge'" class="settings-container">
         <div class="settings-glass-card" style="max-width:900px">
           <div class="sc-hd">
             <h2>知识库与 RAG</h2>
@@ -961,7 +1129,7 @@ onMounted(() => {
       </main>
 
       <!-- ==================== LIVE2D ASSETS VIEW ==================== -->
-      <main v-else-if="currentView==='live2d'" class="settings-container">
+      <main v-show="currentView==='live2d'" class="settings-container">
         <div class="settings-glass-card" style="max-width:900px">
           <div class="sc-hd">
             <h2>Live2D 模型资产</h2>
@@ -969,10 +1137,10 @@ onMounted(() => {
           </div>
           <div class="sc-body">
             <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-              <NUpload :max="1" accept=".zip,.7z,.rar" :custom-request="(o: any) => handleAssetUpload(o, 'live2d')">
+              <NUpload ref="live2dUploadRef" :max="1" accept=".zip,.7z,.rar" :custom-request="(o: any) => handleAssetUpload(o, 'live2d')">
                 <NButton type="primary" ghost>上传 Live2D 模型</NButton>
               </NUpload>
-              <NUpload :max="1" accept=".jpg,.jpeg,.png,.webp" :custom-request="(o: any) => handleAssetUpload(o, 'background')">
+              <NUpload ref="bgUploadRef" :max="1" accept=".jpg,.jpeg,.png,.webp" :custom-request="(o: any) => handleAssetUpload(o, 'background')">
                 <NButton type="primary" ghost>上传背景图片</NButton>
               </NUpload>
             </div>
@@ -983,18 +1151,19 @@ onMounted(() => {
       </main>
 
       <!-- ==================== SYSTEM SETTINGS VIEW ==================== -->
-      <main v-else-if="currentView==='settings'" class="settings-container">
+      <main v-show="currentView==='settings'" class="settings-container">
         <div class="settings-glass-card">
           <div class="sc-hd"><h2>全局系统设置</h2><p>管理整个系统的通用外观与行为配置</p></div>
           <div class="sc-body">
-            <div class="srow"><div class="sinfo"><h3>全局背景主题</h3><p>上传图片以更改管理端与用户端的主题背景</p></div><button class="upbtn" @click="fileInput?.click()">更换图片</button><input type="file" ref="fileInput" @change="handleBgUpload" accept="image/*" style="display:none"/></div>
+            <div class="srow"><div class="sinfo"><h3>全局背景主题</h3><p>上传图片以更改管理端与用户端的主题背景</p></div><div style="display:flex;align-items:center;gap:12px"><img v-if="bgUrl" :src="bgUrl" style="width:80px;height:45px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,0.15)" /><button class="upbtn" @click="fileInput?.click()">更换图片</button></div><input type="file" ref="fileInput" @change="handleBgUpload" accept="image/*" style="display:none"/></div>
             <div class="srow"><div class="sinfo"><h3>语音持久化</h3><p>是否保存用户语音录音文件</p></div><div class="tgl" :class="{active: config.voice_persistence}" @click="config.voice_persistence = !config.voice_persistence"><div class="tgl-knob"/></div></div>
             <div class="srow"><div class="sinfo"><h3>用户文档配额</h3><p>每用户最多上传文档数</p></div><input type="number" v-model.number="config.user_doc_quota" class="sinput" /></div>
           </div>
           <div class="sc-actions">
-            <span v-if="configSaved" style="color:#10B981;margin-right:16px;font-size:14px">✓ 已保存</span>
+            <span v-if="settingsError" style="color:#EF4444;margin-right:16px;font-size:14px">{{ settingsError }}</span>
+            <span v-else-if="settingsSaved" style="color:#10B981;margin-right:16px;font-size:14px">✓ 已保存</span>
             <button class="pbtn" @click="currentView='dashboard'">返回</button>
-            <button class="pbtn" style="margin-left:12px;background:#3B82F6" @click="saveConfig()" :disabled="configSaving">{{ configSaving ? '保存中...' : '保存并返回' }}</button>
+            <button class="pbtn" style="margin-left:12px;background:#3B82F6" @click="saveSettingsConfig()" :disabled="settingsSaving">{{ settingsSaving ? '保存中...' : '保存并返回' }}</button>
           </div>
         </div>
       </main>
@@ -1070,22 +1239,22 @@ onMounted(() => {
             <button class="modal-close" @click="showKnowledgePreview = false">✕</button>
           </div>
           <div v-if="previewDoc" class="preview-info">
-            <div class="info-row"><span class="info-label">📄 文件名</span><span class="info-value">{{ previewDoc.name }}</span></div>
+            <div class="info-row"><span class="info-label">📄 文件名</span><span class="info-value">{{ previewDoc.filename }}</span></div>
             <div class="info-row"><span class="info-label">📏 大小</span><span class="info-value">{{ previewDoc.size_display }}</span></div>
             <div class="info-row">
               <span class="info-label">📊 状态</span>
               <span class="info-value">
-                <NTag :type="previewDoc.status === 'indexed' ? 'success' : previewDoc.status === 'pending' ? 'warning' : 'info'" size="small">
-                  {{ previewDoc.status === 'indexed' ? '已索引' : previewDoc.status === 'pending' ? '等待处理' : '处理中' }}
+                <NTag :type="previewDoc.status === 'ready' ? 'success' : previewDoc.status === 'pending' ? 'warning' : previewDoc.status === 'failed' ? 'error' : 'info'" size="small">
+                  {{ previewDoc.status === 'ready' ? '已索引' : previewDoc.status === 'pending' ? '等待处理' : previewDoc.status === 'failed' ? '失败' : '处理中' }}
                 </NTag>
               </span>
             </div>
-            <div class="info-row"><span class="info-label">📅 上传时间</span><span class="info-value">{{ previewDoc.uploaded_at }}</span></div>
+            <div class="info-row"><span class="info-label">📅 上传时间</span><span class="info-value">{{ previewDoc.created_at }}</span></div>
           </div>
           <div class="preview-chunks">
             <h4 class="chunks-title">Chunks 预览 <span v-if="previewChunks.length" class="chunks-count">(共 {{ previewChunks.length }} 块)</span></h4>
             <NSpin v-if="previewLoading" />
-            <div v-else-if="previewChunks.length === 0" class="chunks-empty">{{ previewDoc?.status === 'indexed' ? '暂无 chunk 数据' : '文档尚未向量化，请先点击 Vectorize' }}</div>
+            <div v-else-if="previewChunks.length === 0" class="chunks-empty">{{ previewDoc?.status === 'ready' ? '暂无 chunk 数据' : '文档尚未向量化，请先点击 Vectorize' }}</div>
             <div v-else class="chunks-list">
               <div v-for="chunk in previewChunks.slice(0, 10)" :key="chunk.id" class="chunk-item">
                 <div class="chunk-header"><span class="chunk-index">#{{ chunk.chunk_index }}</span><span class="chunk-size">[{{ chunk.content.length }} chars]</span></div>
@@ -1103,7 +1272,7 @@ onMounted(() => {
 
 <style>
 /* ===== ROOT RESPONSIVE ===== */
-.admin-root { width:100vw; height:100vh; background:#000; display:flex; justify-content:center; align-items:center; font-family:'Inter',system-ui,-apple-system,sans-serif; overflow:hidden }
+.admin-root { width:100vw; height:100vh; background:#0078D7; display:flex; justify-content:center; align-items:center; font-family:'Inter',system-ui,-apple-system,sans-serif; overflow:hidden }
 /* Using dynamic aspect ratio scaling based on viewport width/height to avoid excessive scaling */
 .layout-wrapper {
   width: 100%;
@@ -1247,9 +1416,9 @@ onMounted(() => {
 .mtr.dn { color:#EF4444 }
 
 /* Chart cards */
-.charts2col { display:grid; grid-template-columns:1fr 1.2fr; gap:14px }
+.charts2col { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.5fr); gap:14px }
 .charts3col { display:grid; grid-template-columns:1.2fr 1fr 1.3fr; gap:14px }
-.cchart { background:rgba(255,255,255,.8); border-radius:20px; padding:18px; box-shadow:0 4px 12px rgba(0,0,0,.03); display:flex; flex-direction:column; border:1px solid rgba(255,255,255,.8); transition:transform .2s ease,box-shadow .2s ease; cursor:pointer }
+.cchart { min-width:0; background:rgba(255,255,255,.8); border-radius:20px; padding:18px; box-shadow:0 4px 12px rgba(0,0,0,.03); display:flex; flex-direction:column; border:1px solid rgba(255,255,255,.8); transition:transform .2s ease,box-shadow .2s ease; cursor:pointer }
 .cchart:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(59,130,246,.08); background:#FFF }
 .cchart h3 { margin:0 0 14px; font-size:15px; font-weight:700; color:#1F2937 }
 
@@ -1288,6 +1457,7 @@ onMounted(() => {
 .expand-overlay { position:absolute; inset:0; background:rgba(0,0,0,.35); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); z-index:200; display:flex; justify-content:center; align-items:center }
 .expand-card { position:relative; width:75%; max-height:75%; background:rgba(255,255,255,.95); backdrop-filter:blur(40px); -webkit-backdrop-filter:blur(40px); border-radius:28px; padding:40px; box-shadow:0 24px 64px rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.9); display:flex; flex-direction:column; overflow-y:auto; scrollbar-width:none; -ms-overflow-style:none }
 .expand-card::-webkit-scrollbar { display:none }
+.trend-tooltip { position:absolute; pointer-events:none; transform:translate(-50%,-120%); background:#1F2937; color:#FFF; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:600; white-space:nowrap; z-index:10 }
 .x-btn { position:absolute; top:20px; right:20px; width:44px; height:44px; border-radius:50%; background:rgba(255,255,255,.5); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,.5); color:#4B5563; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .2s }
 .x-btn:hover { background:rgba(255,255,255,.9); color:#1F2937 }
 
@@ -1311,13 +1481,14 @@ onMounted(() => {
 .slide-down-enter-to, .slide-down-leave-from { opacity:1; max-height:200px }
 
 /* ===== SETTINGS / API CONFIG PAGES ===== */
-.settings-container { width:100%; flex:1; display:flex; justify-content:center; align-items:center; padding:40px; box-sizing:border-box; z-index:10 }
+.settings-container { width:100%; flex:1; display:flex; justify-content:center; align-items:center; padding:40px; box-sizing:border-box; z-index:10; overflow:hidden }
 .settings-glass-card { width:100%; max-width:820px; background:rgba(255,255,255,.92); backdrop-filter:blur(40px); -webkit-backdrop-filter:blur(40px); border-radius:24px; border:1px solid rgba(255,255,255,.9); box-shadow:0 16px 48px rgba(0,0,0,.1); padding:48px; display:flex; flex-direction:column; gap:32px; max-height:90%; overflow-y:auto; scrollbar-width:none; -ms-overflow-style:none }
 .settings-glass-card::-webkit-scrollbar { display:none }
 .sc-hd { border-bottom:1px solid rgba(0,0,0,.08); padding-bottom:20px }
 .sc-hd h2 { font-size:26px; font-weight:700; color:#1F2937; margin:0 0 6px }
 .sc-hd p { font-size:14px; color:#6B7280; margin:0 }
-.sc-body { display:flex; flex-direction:column; gap:14px }
+.sc-body { display:flex; flex-direction:column; gap:14px; min-height:0; overflow-y:auto; flex:1; scrollbar-width:none; -ms-overflow-style:none }
+.sc-body::-webkit-scrollbar { display:none }
 .srow { display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,.5); padding:20px; border-radius:16px; border:1px solid rgba(0,0,0,.04) }
 .sinfo h3 { margin:0 0 4px; font-size:15px; font-weight:600; color:#1F2937 }
 .sinfo p { margin:0; font-size:12px; color:#6B7280 }
@@ -1348,8 +1519,12 @@ onMounted(() => {
 .upload-dragger:hover { background:rgba(59,130,246,.08) }
 
 /* ===== SHARED MODAL ===== */
-.persona-modal { width:480px; max-height:80vh; overflow-y:auto; background:rgba(255,255,255,.97); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border-radius:20px; padding:32px; border:1px solid rgba(255,255,255,.6); box-shadow:0 16px 48px rgba(0,0,0,.15) }
-.preview-modal { width:600px; max-height:80vh; overflow-y:auto; background:rgba(255,255,255,.97); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border-radius:20px; padding:32px; border:1px solid rgba(255,255,255,.6); box-shadow:0 16px 48px rgba(0,0,0,.15) }
+.persona-modal { width:480px; max-height:80vh; overflow-y:auto; background:rgba(255,255,255,.97); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border-radius:20px; padding:32px; border:1px solid rgba(255,255,255,.6); box-shadow:0 16px 48px rgba(0,0,0,.15); scrollbar-width:none; -ms-overflow-style:none }
+.persona-modal::-webkit-scrollbar { display:none }
+.preview-modal { width:600px; max-height:80vh; overflow-y:auto; background:rgba(255,255,255,.97); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border-radius:20px; padding:32px; border:1px solid rgba(255,255,255,.6); box-shadow:0 16px 48px rgba(0,0,0,.15); scrollbar-width:none; -ms-overflow-style:none }
+.preview-modal::-webkit-scrollbar { display:none }
+/* NaiveUI NDataTable internal scrollbar hiding */
+.n-scrollbar > .n-scrollbar-rail { display:none !important }
 .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid rgba(0,0,0,.08) }
 .modal-header h3 { margin:0; font-size:20px; font-weight:700; color:#1F2937 }
 .modal-close { width:32px; height:32px; border-radius:50%; background:rgba(0,0,0,.05); border:none; color:#6B7280; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .2s }

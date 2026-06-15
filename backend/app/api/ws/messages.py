@@ -66,7 +66,16 @@ class ErrorOut(BaseModel):
 
 # ── Action tag parsing ───────────────────────────────────────────
 
-_ACTION_TAG_RE = re.compile(r"\[(wave|nod|happy)\]")
+# Known action tags mapped to Live2D motions
+_KNOWN_TAGS = {"wave", "nod", "happy", "greet", "surprised", "sad", "think",
+               "angry", "shy", "wink", "confused", "tap", "idle"}
+
+_ACTION_TAG_RE = re.compile(
+    r"\[(wave|nod|happy|greet|surprised|sad|think|angry|shy|wink|confused|tap|idle)\]"
+)
+
+# Catch-all: any [...] bracket tag the LLM might generate (Chinese/unknown tags)
+_ANY_BRACKET_RE = re.compile(r"\[[^\[\]]{1,20}\]")
 
 # Tags mapped to motion groups (matches useActionParser.ts + available model motions)
 # hiyori_pro_zh groups: Idle, Flick, FlickDown, FlickUp, Tap, Tap@Body, Flick@Body
@@ -78,14 +87,26 @@ ACTION_TAG_MAP: dict[str, str] = {
     "greet": "FlickUp",
     "tap": "Tap@Body",
     "idle": "Idle",
+    "surprised": "FlickUp",
+    "sad": "FlickDown",
+    "think": "Tap@Body",
+    "angry": "Flick",
+    "shy": "Flick@Body",
+    "wink": "Tap",
+    "confused": "FlickDown",
 }
 
 
 def extract_action_tags(text: str) -> list[str]:
-    """Return list of action tags found in text (e.g. ['wave', 'nod'])."""
+    """Return list of known action tags found in text (e.g. ['wave', 'nod'])."""
     return _ACTION_TAG_RE.findall(text)
 
 
 def strip_action_tags(text: str) -> str:
-    """Remove action tags from display text."""
-    return _ACTION_TAG_RE.sub("", text).strip()
+    """Remove ALL bracket tags from display text — both known actions and
+    any [...] pattern the LLM might hallucinate (e.g. [动作], [查询知识库])."""
+    # First strip known action tags
+    result = _ACTION_TAG_RE.sub("", text)
+    # Then strip any remaining bracket tags
+    result = _ANY_BRACKET_RE.sub("", result)
+    return result.strip()

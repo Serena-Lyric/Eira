@@ -24,6 +24,8 @@ from app.orchestrator.nodes import safety_in, safety_out
 from app.domain.conversation.repository import ConversationRepository
 from app.domain.conversation.models import ChatSession, ChatMessage
 from app.domain.identity.models import User as UserModel
+from app.domain.persona.resolver import get_default_persona_prompt, DEFAULT_PERSONA_FALLBACK
+from app.infra.db import get_session_factory
 
 from .messages import (
     UserTextIn,
@@ -55,11 +57,34 @@ async def _process_user_text(
     # Parse user text → extract action tags → strip for LLM
     clean_text = strip_action_tags(msg.text)
 
+    # Load conversation history from DB
+    history: list[dict[str, Any]] = []
+    try:
+        session_id_int = int(session_id)
+        factory = get_session_factory()
+        async with factory() as db_session:
+            repo = ConversationRepository(db_session)
+            msgs = await repo.list_messages(session_id_int, limit=20)
+            history = [{"role": m.role, "content": m.content} for m in msgs[-20:]]
+    except (ValueError, TypeError):
+        logger.warning(
+            "ws.chat.non_integer_session_id",
+            session_id=session_id,
+            user_id=user.id,
+            detail="前端 fallback session_id 无法转为整数 — 历史记录不会加载。检查 createSession() 是否成功调用 REST API。",
+        )
+
+    # Resolve persona prompt: DB default persona > hardcoded fallback
+    persona_prompt = await get_default_persona_prompt()
+    if not persona_prompt:
+        persona_prompt = DEFAULT_PERSONA_FALLBACK
+
     state = ChatState(
         session_id=session_id,
         user_id=str(user.id),
         user_text=clean_text,
-        persona_prompt="你是一个友好的AI导游助手，名字叫'Eira'。请用中文回复，语气亲切自然、热情开朗。\n\n你可以在回复中插入以下动作标记来触发Live2D角色动画：\n- [wave] — 挥手（用于打招呼）\n- [nod] — 点头（用于表示同意或确认）\n- [happy] — 开心（用于表达愉快或称赞）\n\n动作标记应该自然地出现在对话中，不要滥用。每轮对话最多使用1-2个标记。",
+        history=history,
+        persona_prompt=persona_prompt,
     )
 
     await ws.send_json(StateOut(phase="thinking").model_dump())
@@ -73,16 +98,16 @@ async def _process_user_text(
         t_stream_start = time.perf_counter()
 
         # Run the graph
-        result: ChatState = await graph.ainvoke(state)
+        result_dict = await graph.ainvoke(state)
 
-        if result.error:
+        if result_dict.get("error"):
             await ws.send_json(
-                ErrorOut(code="llm_error", detail=result.error).model_dump()
+                ErrorOut(code="llm_error", detail=result_dict["error"]).model_dump()
             )
             await ws.send_json(StateOut(phase="error").model_dump())
             return
 
-        full_text: str = result.llm_text
+        full_text: str = result_dict.get("llm_text", "")
         await ws.send_json(StateOut(phase="streaming").model_dump())
 
         # Stream token-by-token (character chunks for Chinese)
@@ -108,12 +133,14 @@ async def _process_user_text(
                 await asyncio.sleep(0.01)
 
         latency_ms = (time.perf_counter() - t0) * 1000
+        # Use the persisted message ID from the graph's persist node
+        persisted_msg_id = result_dict.get("assistant_message_id")
         await ws.send_json(
             DoneOut(
-                message_id=None,  # would be set if we persisted via T1.3
+                message_id=int(persisted_msg_id) if persisted_msg_id else None,
                 latency_ms=round(latency_ms, 2),
                 tokens={"completion": len(full_text)},
-                sources=result.knowledge_sources if result.knowledge_sources else None,
+                sources=result_dict.get("knowledge_sources") or None,
             ).model_dump()
         )
         await ws.send_json(StateOut(phase="done").model_dump())
@@ -151,6 +178,22 @@ async def websocket_chat(
         return
 
     await ws.accept()
+
+    # Load real user from DB (not a stub with empty email)
+    user: UserModel
+    try:
+        factory = get_session_factory()
+        async with factory() as db_session:
+            from app.domain.identity.repository import UserRepository
+            repo = UserRepository(db_session)
+            u = await repo.get_by_id(user_id)
+            if u:
+                user = u
+            else:
+                user = UserModel(id=user_id, email=f"user-{user_id}@unknown", password_hash="", role="visitor")
+    except Exception:
+        user = UserModel(id=user_id, email=f"user-{user_id}@unknown", password_hash="", role="visitor")
+
     settings = await get_effective_llm_settings()
     provider = await get_provider_registry().get(settings)
 
@@ -184,7 +227,7 @@ async def websocket_chat(
                         ErrorOut(code="bad_message", detail=str(e)).model_dump()
                     )
                     continue
-                await _process_user_text(ws, msg, provider, UserModel(id=user_id, email="", password_hash="", role="visitor"))
+                await _process_user_text(ws, msg, provider, user)
 
             elif msg_type == "interrupt":
                 # Reserved for Phase 3 (ASR/TTS)
@@ -200,8 +243,10 @@ async def websocket_chat(
                 )
 
     except WebSocketDisconnect:
+        print(f"[chat.ws] WebSocketDisconnect user_id={user_id}", flush=True)
         logger.info("ws.chat.disconnect", user_id=user_id)
     except Exception as exc:
+        print(f"[chat.ws] Fatal error user_id={user_id}: {exc}", flush=True)
         logger.error("ws.chat.fatal", user_id=user_id, error=str(exc))
         try:
             await ws.close(code=4000)

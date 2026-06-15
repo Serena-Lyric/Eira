@@ -8,11 +8,30 @@ Reference: spec §7.5 — magic number verification required for all upload endp
 
 from __future__ import annotations
 
+
+def normalize_mime(mime: str) -> str:
+    """Normalize a MIME type string for reliable comparison.
+
+    - Lowercase
+    - Strip whitespace
+    - Remove parameters (e.g. ``text/plain; charset=utf-8`` → ``text/plain``)
+    - Normalize common aliases (e.g. ``image/jpg`` → ``image/jpeg``)
+    """
+    if not mime:
+        return ""
+    mime = mime.strip().lower()
+    mime = mime.split(";")[0].strip()
+    # Common aliases
+    _ALIASES = {"image/jpg": "image/jpeg"}
+    return _ALIASES.get(mime, mime)
+
+
 # Mapping of MIME type → list of acceptable leading byte sequences.
 # For some formats there are multiple valid signatures (e.g. empty ZIP).
 MAGIC_BYTES: dict[str, list[bytes]] = {
     "image/jpeg": [b"\xff\xd8\xff"],
     "image/png": [b"\x89PNG\r\n\x1a\n"],
+    # WebP: RIFF container with WEBP fourcc at offset 8
     "image/webp": [b"RIFF"],
     "application/pdf": [b"%PDF"],
     "application/zip": [b"PK\x03\x04", b"PK\x05\x06"],
@@ -60,5 +79,11 @@ def validate_magic(content: bytes, expected_mime: str) -> bool:
     if not signatures:
         # Unknown MIME — allow through (future-proof)
         return True
+
+    # WebP: must have RIFF header AND WEBP fourcc at offset 8
+    if expected_mime == "image/webp":
+        if not content.startswith(b"RIFF") or len(content) < 12:
+            return False
+        return content[8:12] == b"WEBP"
 
     return any(content.startswith(sig) for sig in signatures)

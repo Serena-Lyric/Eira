@@ -120,32 +120,34 @@ function dirOf(path: string): string {
 }
 
 // ── Fetch 拦截器 ─────────────────────────────────────────────────────────────
+//
+// 全局只 patch 一次 window.fetch；用 virtualBase → files 的注册表支持同时存在多个模型。
+// 修复点：旧实现 `if (_originalFetch) return` 会导致 admin 连续/并发加载多个模型时，
+// 后装的拦截器被跳过，第二个模型的文件请求落到第一个模型的 base/files 上 → 加载错文件。
+// 现在每个模型独立注册一份 base→files，互不覆盖。
 
 let _originalFetch: typeof fetch | null = null
-let _interceptBase: string | null = null
-let _interceptFiles: Map<string, Blob> | null = null
+const _interceptors = new Map<string, Map<string, Blob>>()
 
-function installFetchInterceptor(virtualBase: string, files: Map<string, Blob>): void {
+function _ensurePatched(): void {
   if (_originalFetch) return
-
   _originalFetch = window.fetch
-  _interceptBase = virtualBase
-  _interceptFiles = files
-
   const original = _originalFetch
   window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
     const url = typeof input === 'string' ? input :
       input instanceof URL ? input.href :
       input instanceof Request ? input.url : String(input)
 
-    if (_interceptBase && url.startsWith(_interceptBase)) {
-      const relativePath = url.slice(_interceptBase.length)
-      const blob = _interceptFiles?.get(relativePath)
-      if (blob) {
-        return new Response(blob, {
-          status: 200,
-          headers: { 'Content-Type': blob.type || 'application/octet-stream' },
-        })
+    // 遍历所有已注册模型的 virtualBase，命中即返回对应 Blob
+    for (const [base, files] of _interceptors) {
+      if (url.startsWith(base)) {
+        const blob = files.get(url.slice(base.length))
+        if (blob) {
+          return new Response(blob, {
+            status: 200,
+            headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+          })
+        }
       }
     }
 
@@ -153,12 +155,17 @@ function installFetchInterceptor(virtualBase: string, files: Map<string, Blob>):
   } as typeof fetch
 }
 
+function installFetchInterceptor(virtualBase: string, files: Map<string, Blob>): void {
+  _ensurePatched()
+  _interceptors.set(virtualBase, files)
+}
+
 function uninstallFetchInterceptor(): void {
+  // 清空所有已注册模型并恢复原始 fetch
+  _interceptors.clear()
   if (_originalFetch) {
     window.fetch = _originalFetch
     _originalFetch = null
-    _interceptBase = null
-    _interceptFiles = null
   }
 }
 

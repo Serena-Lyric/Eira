@@ -151,9 +151,11 @@ def get_provider_registry() -> ProviderRegistry:
 async def get_effective_llm_settings() -> LlmSettings:
     """Return LlmSettings with DB overrides merged over env-var defaults.
 
-    Priority: DB system_settings.key="llm"  >  env vars  >  code defaults.
+    Priority: DB system_settings (nested key "llm" or flat keys) > env vars > code defaults.
 
-    Fails gracefully if the DB is unreachable (returns env-var settings).
+    Supports both storage formats:
+    - Nested: key="llm" → {"provider":"deepseek","model":"deepseek-chat",...}
+    - Flat (admin panel): key="llm_provider", "llm_model", etc.
     """
     from app.core.config import get_settings
 
@@ -166,25 +168,42 @@ async def get_effective_llm_settings() -> LlmSettings:
 
         factory = get_session_factory()
         async with factory() as session:
+            # Try nested "llm" key first
             result = await session.execute(
                 select(SystemSetting).where(SystemSetting.key == "llm")
             )
             row = result.scalar_one_or_none()
-            if row is None or not isinstance(row.value, dict):
-                return base
+            if row is not None and isinstance(row.value, dict):
+                db_values: dict = row.value
+                merged = base.model_copy(update={
+                    k: v for k, v in db_values.items()
+                    if k in type(base).model_fields and v is not None
+                })
+                logger.debug("llm_settings.merged_from_nested_key", keys=list(db_values.keys()))
+                return merged
 
-            db_values: dict = row.value
-            merged = base.model_copy(update={
-                k: v for k, v in db_values.items()
-                if k in base.model_fields and v is not None
-            })
-            logger.debug(
-                "llm_settings.merged_from_db",
-                db_keys=list(db_values.keys()),
-                provider=merged.provider,
-                model=merged.model,
+            # Fallback: collect flat keys from admin panel
+            flat_keys = ["llm_provider", "llm_model", "llm_api_key", "llm_api_base",
+                         "llm_max_tokens", "llm_temperature"]
+            result = await session.execute(
+                select(SystemSetting).where(SystemSetting.key.in_(flat_keys))
             )
-            return merged
+            flat_rows = result.scalars().all()
+            flat_values: dict[str, object] = {}
+            for r in flat_rows:
+                # Map flat key → LlmSettings field name
+                field = r.key.removeprefix("llm_")  # e.g. "llm_provider" → "provider"
+                flat_values[field] = r.value
+
+            if flat_values:
+                merged = base.model_copy(update={
+                    k: v for k, v in flat_values.items()
+                    if k in type(base).model_fields and v is not None
+                })
+                logger.debug("llm_settings.merged_from_flat_keys", keys=list(flat_values.keys()))
+                return merged
+
+            return base
     except Exception as exc:
         logger.debug("llm_settings.db_unavailable", error=str(exc))
         return base

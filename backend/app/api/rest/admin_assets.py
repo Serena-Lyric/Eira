@@ -42,6 +42,7 @@ class AdminAssetOut(BaseModel):
     user_id: int
     created_at: str | None = None
     is_default: bool = False
+    oss_key: str | None = None
 
 
 class AdminAssetListOut(BaseModel):
@@ -164,6 +165,7 @@ async def list_assets_admin(
                 (r[1] == "live2d_model" and default_model_id and r[7] == default_model_id) or
                 (r[1] == "background" and default_bg_oss_key and r[7] == default_bg_oss_key)
             ),
+            oss_key=r[7],
         )
         for r in rows
     ]
@@ -371,7 +373,7 @@ async def get_asset_download_url(
     return {"url": url, "expires_in": 3600}
 
 
-# ── Download (redirect to presigned URL) ────────────────────────────────
+# ── Download (backend streaming) ─────────────────────────────────────────
 
 
 @router.get("/{asset_id}/file")
@@ -380,29 +382,41 @@ async def download_asset_file(
     _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Redirect to presigned OSS URL via Vite proxy.
+    """后端直读 OSS 字节并整体返回（供前端 Live2D 加载）。
 
-    The browser follows the 307 redirect through the Vite /oss/ proxy to
-    MinIO, avoiding backend-to-MinIO connectivity issues (boto3 get_object
-    SignatureDoesNotMatch with Docker MinIO on Windows).
+    早期版本曾尝试 presigned URL + Vite /oss proxy 307 重定向，但
+    proxy 的 changeOrigin 会改写 Host header，破坏 MinIO 的 S3v4
+    签名校验。这里改回 boto3 get_object 直读（同 knowledge/service.py
+    的可用模式），由后端整体返回，前端无需接触 presigned URL。
     """
     result = await db.execute(
-        text("SELECT oss_key, kind FROM assets WHERE id = :id"),
+        text("SELECT oss_key, kind, name FROM assets WHERE id = :id"),
         {"id": asset_id},
     )
     row = result.fetchone()
     if not row:
         raise HTTPException(404, "资源不存在")
 
-    oss_key, kind = row[0], row[1]
+    oss_key, kind, name = row[0], row[1], row[2]
     bucket = BUCKETS.get(kind, "eira-backgrounds")
 
-    from app.infra.oss import presign_get
-    from fastapi.responses import RedirectResponse
+    from app.infra.oss import get_object_bytes
+    from fastapi import Response
 
-    presigned = presign_get(bucket, oss_key, expires=60)
-    proxy_url = presigned.replace("http://localhost:9000/", "/oss/")
-    return RedirectResponse(url=proxy_url, status_code=307)
+    try:
+        data, content_type = get_object_bytes(bucket, oss_key)
+    except Exception as e:
+        logger.error("oss_read_failed", asset_id=asset_id, oss_key=oss_key, error=str(e))
+        raise HTTPException(502, "OSS 读取失败")
+
+    return Response(
+        content=data,
+        media_type=content_type or "application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 # ── Cleanup test artifacts ───────────────────────────────────────────────

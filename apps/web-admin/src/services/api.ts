@@ -123,8 +123,8 @@ export const dashboardApi = {
 
 export const personaApi = {
   async list(): Promise<Persona[]> {
-    const { data } = await http.get("/admin/personas")
-    return data
+    const { data } = await http.get<{ items: Persona[]; total: number }>("/admin/personas")
+    return data.items
   },
 
   async get(id: number): Promise<Persona> {
@@ -161,8 +161,8 @@ export const personaApi = {
 
 export const knowledgeApi = {
   async list(): Promise<KnowledgeDocument[]> {
-    const { data } = await http.get("/admin/documents")
-    return data.items || data
+    const { data } = await http.get<{ items: KnowledgeDocument[]; total: number }>("/admin/documents")
+    return data.items
   },
 
   async upload(formData: FormData): Promise<KnowledgeDocument> {
@@ -197,8 +197,7 @@ export const knowledgeApi = {
 export const assetApi = {
   async list(): Promise<Asset[]> {
     const { data } = await http.get("/admin/assets")
-    // Backend returns { items: [...], total: number }, extract items array
-    return data.items ?? data
+    return data.items
   },
 
   async uploadLive2D(formData: FormData): Promise<Asset> {
@@ -209,7 +208,7 @@ export const assetApi = {
   },
 
   async uploadBackground(formData: FormData): Promise<Asset> {
-    const { data } = await http.post("/admin/assets/background", formData, {
+    const { data } = await http.post("/admin/assets/backgrounds", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     })
     return data
@@ -223,6 +222,12 @@ export const assetApi = {
   async delete(id: number): Promise<void> {
     await http.delete(`/admin/assets/${id}`)
   },
+
+  /** Get a presigned download URL for an asset. */
+  async getDownloadUrl(id: number): Promise<{ url: string; expires_in: number }> {
+    const { data } = await http.get(`/admin/assets/${id}/download`)
+    return data
+  },
 }
 
 // ── App Config API ────────────────────────────────────────────────────
@@ -230,8 +235,7 @@ export const assetApi = {
 export const configApi = {
   async get(): Promise<AppConfig> {
     const { data } = await http.get("/admin/settings")
-    // Backend returns { settings: { key: value } }, unwrap to flat AppConfig
-    return data.settings ?? data
+    return data.settings
   },
 
   async update(
@@ -239,8 +243,7 @@ export const configApi = {
   ): Promise<AppConfig> {
     // Backend expects { settings: { key: value } }
     const { data } = await http.patch("/admin/settings", { settings: partial })
-    // Backend returns { settings: { key: value } }, unwrap to flat AppConfig
-    return data.settings ?? data
+    return data.settings
   },
 }
 
@@ -248,14 +251,14 @@ export const configApi = {
 
 export const personaConfigApi = {
   async get(): Promise<PersonaConfig> {
-    const { data } = await http.get("/admin/persona-config")
+    const { data } = await http.get("/admin/persona-config/")
     return data
   },
 
   async update(
     partial: Partial<PersonaConfig>,
   ): Promise<PersonaConfig> {
-    const { data } = await http.patch("/admin/persona-config", partial)
+    const { data } = await http.patch("/admin/persona-config/", partial)
     return data
   },
 }

@@ -2,6 +2,8 @@ import { ref, computed } from 'vue';
 import { useWebSocket } from '@eira/ui-shared';
 import type { WebSocketHandle } from '@eira/ui-shared';
 import { useActionParser } from './useActionParser';
+import { useAuthStore } from '../stores/auth';
+import { conversationApi } from '../services/api';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -38,6 +40,9 @@ export function useChatSession() {
   }
 
   function connect() {
+    // Clean up any prior connection to prevent duplicate listeners
+    disconnect();
+
     const token = getAccessToken();
     if (!token) {
       console.warn('[useChatSession] No access token — redirecting to login');
@@ -130,12 +135,70 @@ export function useChatSession() {
     });
   }
 
-  function createSession() {
-    sessionId.value = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    return sessionId.value;
+  async function createSession(): Promise<string> {
+    const auth = useAuthStore()
+    let token = auth.accessToken || getAccessToken()
+
+    // Poll briefly for token readiness (handles race after login)
+    if (!token) {
+      let attempts = 0
+      while (!token && attempts < 30) {
+        await new Promise((r) => setTimeout(r, 100))
+        token = auth.accessToken || getAccessToken()
+        attempts++
+      }
+    }
+
+    if (!token) {
+      console.warn('[useChatSession] No token available for createSession, using fallback')
+      sessionId.value = crypto.randomUUID()
+      return sessionId.value
+    }
+
+    try {
+      // 优先复用最近会话，避免刷新后丢失上下文
+      const list = await conversationApi.list(1, 0)
+      if (list.sessions && list.sessions.length > 0) {
+        const lastSession = list.sessions[0]
+        sessionId.value = String(lastSession.id)
+        // 加载历史消息到 UI
+        await loadHistory(lastSession.id)
+        return sessionId.value
+      }
+
+      // 无历史会话时创建新会话
+      const session = await conversationApi.create({ persona_id: undefined })
+      sessionId.value = String(session.id)
+      return sessionId.value
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 401) {
+        console.warn(
+          '[useChatSession] createSession got 401 despite token — auth may be stale',
+        )
+      } else {
+        console.error('[useChatSession] createSession failed:', err)
+      }
+      sessionId.value = crypto.randomUUID()
+      return sessionId.value
+    }
   }
 
-  function sendText(text: string) {
+  async function loadHistory(sessionIdNum: number) {
+    try {
+      const msgs = await conversationApi.getMessages(sessionIdNum, 200, 0)
+      // 按时间升序（后端已排序）添加到消息列表
+      messages.value = msgs.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        ts: new Date(m.created_at).getTime(),
+      }))
+    } catch (err) {
+      console.warn('[useChatSession] Failed to load history:', err)
+    }
+  }
+
+  async function sendText(text: string) {
     if (!ws || !ws.isConnected.value) {
       console.warn('[useChatSession] WS not connected — reconnecting...');
       connect();
@@ -149,14 +212,14 @@ export function useChatSession() {
       return;
     }
 
+    if (!sessionId.value) {
+      await createSession();
+    }
+
     doSend(text);
   }
 
   function doSend(text: string) {
-    if (!sessionId.value) {
-      createSession();
-    }
-
     // Add user message immediately
     messages.value.push({
       role: 'user',

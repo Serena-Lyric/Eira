@@ -40,13 +40,10 @@ export function useAppConfig() {
       setTimeout(() => {
         savedMessage.value = false
       }, 3000)
-    } catch {
-      // If backend not available, persist locally
-      console.log('[useAppConfig] Backend config endpoint not available, changes saved locally')
-      savedMessage.value = true
-      setTimeout(() => {
-        savedMessage.value = false
-      }, 3000)
+    } catch (e: any) {
+      // §7 fix: show real error, not fake success
+      error.value = e?.response?.data?.detail || e?.message || '保存失败，请检查网络连接'
+      savedMessage.value = false
     } finally {
       saving.value = false
     }
@@ -65,18 +62,17 @@ export function useAppConfig() {
 
 function getDefaultConfig(): AppConfig {
   return {
+    // §5 fix: default values aligned with backend provider support
     llm_provider: 'deepseek',
     llm_model: 'deepseek-chat',
-    tts_engine: 'aliyun_nls',
-    asr_engine: 'aliyun_asr',
-    embedding_model: 'text-embedding-v3',
-    web_search_provider: 'bocha',
-    daily_search_quota: 200,
-    api_key_status: {
-      deepseek: 'configured',
-      aliyun_nls: 'configured',
-      tavily: 'missing',
-    },
+    tts_provider: 'xunfei',
+    asr_provider: 'xunfei',
+    embedding_provider: 'openai',
+    embedding_model: 'text-embedding-3-small',
+    search_provider: 'tavily',
+    daily_search_quota: 100,
+    // §6 fix: api_key_status is now provided by backend, empty by default
+    api_key_status: {},
     global_background_url: '',
     voice_persistence: true,
     user_doc_quota: 100,

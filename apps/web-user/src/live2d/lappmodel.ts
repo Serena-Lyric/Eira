@@ -849,6 +849,11 @@ export class LAppModel extends CubismUserModel {
       return false;
     }
 
+    // Guard: _modelSetting may be null during async model load
+    if (!this._modelSetting) {
+      return false;
+    }
+
     const count: number = this._modelSetting.getHitAreasCount();
 
     for (let i = 0; i < count; i++) {

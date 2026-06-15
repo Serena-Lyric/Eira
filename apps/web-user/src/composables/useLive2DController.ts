@@ -19,7 +19,11 @@ const STORAGE_PREFIX = 'eira:live2d:';
 export function useLive2DController() {
   const containerRef = ref<HTMLElement | null>(null);
   const isLoaded = ref(false);
+  // activeModelId：当前模型的 virtualBase（eira-model://...），仅用于本地视图矩阵缓存键，
+  // 绝不可持久化到 DB 的 active_model_id（见 P1 根因：会污染成虚拟前缀导致下次加载 502）。
   const activeModelId = ref<string | null>(null);
+  // activeModelOssKey：当前模型的真实 OSS key（live2d/.../xxx.zip），用于持久化到 active_model_id。
+  const activeModelOssKey = ref<string | null>(null);
   const loadError = ref<string | null>(null);
 
   // §4 fix: Model loader replaces hardcoded MODEL_REGISTRY
@@ -276,6 +280,8 @@ export function useLive2DController() {
       const ready = await waitModelReady();
       if (ready) {
         activeModelId.value = baseUrl;
+        // 持久化用真实 OSS key，不是 virtualBase（见 P1 根因）
+        activeModelOssKey.value = modelLoader.state.value.ossKey;
         loadError.value = null;
         isLoaded.value = true;
         manager.getModel()?.centerModel();
@@ -359,6 +365,7 @@ export function useLive2DController() {
     containerRef,
     isLoaded,
     activeModelId,
+    activeModelOssKey,
     loadError,
     triggerMotion,
     setMouthOpen,

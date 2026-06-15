@@ -106,12 +106,18 @@ export interface PersonaCreate {
 
 export interface KnowledgeDocument {
   id: number
-  name: string
-  size_bytes: number
-  size_display: string
-  status: "indexed" | "pending" | "processing"
+  filename: string
+  mime_type: string | null
+  file_size: number
+  status: "ready" | "pending" | "processing" | "failed"
+  chunk_count: number
+  error: string | null
+  uploader_id: number
+  created_at: string | null
+  updated_at: string | null
+  // Computed on frontend
+  size_display?: string
   progress?: number
-  uploaded_at: string
 }
 
 export interface ChunkInfo {
@@ -144,10 +150,11 @@ export interface Asset {
 export interface AppConfig {
   llm_provider: string
   llm_model: string
-  tts_engine: string
-  asr_engine: string
+  tts_provider: string
+  asr_provider: string
+  embedding_provider: string
   embedding_model: string
-  web_search_provider: string
+  search_provider: string
   daily_search_quota: number
   api_key_status: Record<string, "configured" | "missing">
   global_background_url?: string
@@ -184,4 +191,6 @@ export interface PersonaConfig {
   available_offline_motions: MotionOption[]
 
   default_speech_rate: number
+  default_background_oss_key: string | null
+  default_background_url: string | null
 }

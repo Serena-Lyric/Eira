@@ -1,7 +1,10 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import HTTPException
 from app.core.config import get_settings
 from app.core.logging import configure_logging
+from app.core.error_schema import ErrorResponse
 from app.core.middleware.audit import AuditMiddleware
 from app.api.rest import system, auth, conversations, voice, feedback, user, persona_config, stats, documents, assets
 from app.api.rest import admin_dashboard, admin_documents, admin_assets
@@ -62,6 +65,29 @@ def create_app() -> FastAPI:
         redoc_url=None,
         lifespan=lifespan,
     )
+
+    # §16 fix: Unified error response format for all HTTP exceptions
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        # Preserve existing structured detail if already in ErrorResponse format
+        if isinstance(exc.detail, dict) and "error" in exc.detail:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=exc.detail,
+                headers=getattr(exc, "headers", None),
+            )
+        # Convert string detail to unified format, retaining "detail" for backward compat
+        content = ErrorResponse(
+            error="http_error",
+            message=str(exc.detail),
+        ).model_dump()
+        content["detail"] = str(exc.detail)  # backward compat for tests
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=content,
+            headers=getattr(exc, "headers", None),
+        )
+
     app.add_middleware(AuditMiddleware)
     app.include_router(system.router)
     app.include_router(auth.router)

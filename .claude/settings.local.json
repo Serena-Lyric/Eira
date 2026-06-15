@@ -79,7 +79,8 @@
       "Bash(echo \"\\(exit $?\\)\")",
       "Bash(EIRA_DB_DSN=postgresql+asyncpg://eira:eira@localhost:5432/eira EIRA_REDIS_URL=redis://localhost:6379/0 EIRA_OSS_ENDPOINT=http://localhost:9000 python -m uv run alembic upgrade head)",
       "Bash(EIRA_DB_DSN=postgresql+asyncpg://eira:eira@localhost:5432/eira EIRA_REDIS_URL=redis://localhost:6379/0 EIRA_OSS_ENDPOINT=http://localhost:9000 python -m uv run alembic current)",
-      "Bash(docker exec *)"
+      "Bash(docker exec *)",
+      "Bash(npx tsc *)"
     ]
   },
   "thinking": false

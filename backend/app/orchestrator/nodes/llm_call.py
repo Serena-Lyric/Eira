@@ -12,19 +12,12 @@ import uuid
 import structlog
 from app.capabilities.llm.base import BaseLLMProvider
 from app.orchestrator.state import ChatState
+from app.domain.persona.resolver import DEFAULT_PERSONA_FALLBACK
 
 logger = structlog.get_logger(__name__)
 
-_SYSTEM_PROMPT = """你是一个友好的AI导游助手，名字叫"Eira"。请用中文回复，语气亲切自然、热情开朗。
-
-你可以在回复中插入以下动作标记来触发Live2D角色动画：
-- [wave] — 挥手（用于打招呼）
-- [nod] — 点头（用于表示同意或确认）
-- [happy] — 开心（用于表达愉快或称赞）
-
-动作标记应该自然地出现在对话中，不要滥用。每轮对话最多使用1-2个标记。
-
-请根据用户的问题提供有帮助的旅行建议、路线推荐或信息解答。"""
+# 最终 fallback system prompt — 仅当 DB 无默认 persona 且 state.persona_prompt 为空时使用
+_SYSTEM_PROMPT = DEFAULT_PERSONA_FALLBACK
 
 
 async def llm_call(state: ChatState, provider: BaseLLMProvider) -> dict:

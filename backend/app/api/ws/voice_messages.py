@@ -11,11 +11,13 @@ client → server:
 server → client:
   {"type": "asr.partial", "text": "..."}
   {"type": "asr.final", "text": "最终文本"}
-  {"type": "chat.token", "text": "..."}
-  {"type": "chat.action", "tag": "wave"}
+  {"type": "token", "text": "..."}
+  {"type": "action", "tag": "wave"}
   {"type": "chat.done", "message_id": ..., "latency_ms": ...}
   {"type": "error", "code": "...", "detail": "..."}
   Binary frames: TTS audio chunks (from T3.5)
+
+Note: 前端 useVoiceWs.ts 同时兼容 "token"/"chat.token" 和 "action"/"chat.action"（历史原因）。
 """
 
 from typing import Literal
@@ -29,6 +31,7 @@ from pydantic import BaseModel, Field
 class VoiceStartIn(BaseModel):
     type: Literal["voice.start"] = "voice.start"
     lang: str = Field(default="zh", max_length=8)
+    session_id: str = Field(default="", max_length=64)
 
 
 class VoiceEndIn(BaseModel):

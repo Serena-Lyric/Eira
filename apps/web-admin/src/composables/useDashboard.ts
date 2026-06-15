@@ -35,6 +35,7 @@ export function useDashboard() {
   })
   const topQuestions = ref<TopQuestion[]>([])
   const satisfactionTrend = ref<SatisfactionTrendPoint[]>([])
+  const satisfactionTrendMonth = ref<SatisfactionTrendPoint[]>([])
   const wordCloud = ref<WordCloudItem[]>([])
   const sentiment = ref<SentimentData>({
     positive_pct: 0,
@@ -61,10 +62,11 @@ export function useDashboard() {
     const params = buildParams()
 
     try {
-      const [m, tq, st, wc, se, fb, realStats] = await Promise.all([
+      const [m, tq, st, stMonth, wc, se, fb, realStats] = await Promise.all([
         dashboardApi.getMetrics(params).catch(() => null),
         dashboardApi.getTopQuestions(5, params).catch(() => null),
-        dashboardApi.getSatisfactionTrend(params).catch(() => null),
+        dashboardApi.getSatisfactionTrend({ range: 'week' }).catch(() => null),
+        dashboardApi.getSatisfactionTrend({ range: 'month' }).catch(() => null),
         dashboardApi.getWordCloud(params).catch(() => null),
         dashboardApi.getSentiment(params).catch(() => null),
         dashboardApi.getFeedback({ limit: 10 }).catch(() => null),
@@ -91,9 +93,9 @@ export function useDashboard() {
       if (tq && tq.length > 0) topQuestions.value = tq
       else topQuestions.value = getMockTopQuestions()
 
-      // Satisfaction Trend: fallback to mock if backend returns empty array
-      if (st && st.length > 0) satisfactionTrend.value = st
-      else satisfactionTrend.value = getMockSatisfactionTrend()
+      // Satisfaction Trend: week for card, month for expanded detail
+      satisfactionTrend.value = st || []
+      satisfactionTrendMonth.value = stMonth || []
 
       // Word Cloud: fallback to mock if backend returns empty array
       if (wc && wc.length > 0) wordCloud.value = wc
@@ -139,6 +141,7 @@ export function useDashboard() {
     metrics,
     topQuestions,
     satisfactionTrend,
+    satisfactionTrendMonth,
     wordCloud,
     sentiment,
     feedback,

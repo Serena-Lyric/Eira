@@ -28,3 +28,11 @@ Thumbs.db
 
 # logs
 *.log
+
+# original files (large binary assets for reference only)
+docs/originalfile/
+
+# experimental live2d bundle files
+vite.config.live2d-bundle.ts
+apps/web-user/src/live2d-bundle-entry.ts
+apps/web-user/vite.config.live2d-bundle.ts

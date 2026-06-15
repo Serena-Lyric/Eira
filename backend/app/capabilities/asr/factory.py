@@ -11,29 +11,32 @@ from .mock import MockASRProvider
 def create_asr_provider(settings: AsrSettings) -> BaseASRProvider:
     """Instantiate the correct ASR provider based on settings.
 
-    Returns MockASRProvider when provider == "mock" or when no API key is
-    configured for a real provider (graceful fallback for dev).
+    Raises ValueError when real provider is configured but credentials are
+    missing (no silent fallback). Mock is only enabled when explicitly set
+    (tests).
     """
     if settings.provider == "mock":
         return MockASRProvider()
 
-    if not settings.api_key:
-        from structlog import get_logger
+    if settings.provider == "xunfei":
+        if not settings.api_key or not settings.api_secret or not settings.app_id:
+            raise ValueError(
+                "Xunfei ASR credentials incomplete: "
+                "app_id, api_key, and api_secret are all required. "
+                "Set EIRA_ASR__PROVIDER=mock for local development."
+            )
 
-        get_logger(__name__).warning(
-            "asr.provider.fallback_to_mock",
-            provider=settings.provider,
-            reason="no_api_key",
+        from .xunfei import XunfeiASRProvider
+        return XunfeiASRProvider(
+            app_id=settings.app_id,
+            api_key=settings.api_key,
+            api_secret=settings.api_secret,
+            api_base=settings.api_base or None,
+            request_timeout=settings.request_timeout,
         )
-        return MockASRProvider()
 
-    # Real provider implementations (aliyun_nls, xunfei) to be added
-    # when API keys are available. For now, fall back to mock.
-    from structlog import get_logger
-
-    get_logger(__name__).warning(
-        "asr.provider.not_implemented",
-        provider=settings.provider,
-        reason="real_provider_not_yet_implemented",
+    # Unknown / unimplemented real provider
+    raise ValueError(
+        f"ASR provider '{settings.provider}' is not implemented. "
+        "Available: xunfei, mock."
     )
-    return MockASRProvider()

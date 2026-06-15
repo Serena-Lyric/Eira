@@ -25,6 +25,9 @@ from app.orchestrator.state import ChatState
 from app.orchestrator.graph import build_graph
 from app.orchestrator.nodes import safety_in, safety_out
 from app.orchestrator.sentence_splitter import SentenceSplitter
+from app.domain.conversation.repository import ConversationRepository
+from app.domain.persona.resolver import get_default_persona_prompt, DEFAULT_PERSONA_FALLBACK
+from app.infra.db import get_session_factory
 
 from .messages import (
     TokenOut,
@@ -81,17 +84,40 @@ async def websocket_voice(
 
     await ws.accept()
 
-    settings = get_settings()
-    asr_provider = create_asr_provider(settings.asr)
-    llm_settings = await get_effective_llm_settings()
-    llm_provider = await get_provider_registry().get(llm_settings)
-    tts_provider = create_tts_provider(settings.tts)
-    audio_pump = AudioPump(ws)
+    # ── Provider initialization (must be inside try block so failures are
+    #     reported to the client instead of causing silent code=4000) ─────
+    try:
+        from app.capabilities.effective_settings import (
+            get_effective_tts_settings,
+            get_effective_asr_settings,
+        )
+        asr_settings = await get_effective_asr_settings()
+        asr_provider = create_asr_provider(asr_settings)
+        llm_settings = await get_effective_llm_settings()
+        llm_provider = await get_provider_registry().get(llm_settings)
+        tts_settings = await get_effective_tts_settings()
+        tts_provider = create_tts_provider(tts_settings)
+        audio_pump = AudioPump(ws)
+    except Exception as init_exc:
+        print(f"[voice.ws] Init error user_id={user_id}: {init_exc}", flush=True)
+        logger.error("ws.voice.init_error", user_id=user_id, error=str(init_exc))
+        try:
+            await ws.send_json(
+                VoiceErrorOut(
+                    code="init_failed",
+                    detail=f"Provider initialization failed: {str(init_exc)}",
+                ).model_dump()
+            )
+        except Exception:
+            pass
+        await ws.close(code=1011)  # Internal server error
+        return
 
     # State for the current voice session
     audio_buffer: list[bytes] = []
     asr_active = False
     current_lang = "zh"
+    current_session_id = ""  # populated from voice.start message
     cancel_event = asyncio.Event()
 
     async def flush_audio_and_recognize() -> str:
@@ -121,25 +147,46 @@ async def websocket_voice(
     async def run_orchestrator(text: str) -> None:
         """Run the orchestrator graph and stream results with TTS audio."""
         t0 = time.perf_counter()
+        session_id = current_session_id  # set in voice.start handler
 
         clean_text = strip_action_tags(text)
+
+        # Load conversation history from DB
+        history: list[dict[str, Any]] = []
+        try:
+            session_id_int = int(session_id)
+            factory = get_session_factory()
+            async with factory() as db_session:
+                repo = ConversationRepository(db_session)
+                msgs = await repo.list_messages(session_id_int, limit=20)
+                history = [{"role": m.role, "content": m.content} for m in msgs[-20:]]
+        except (ValueError, TypeError):
+            pass  # 非整数 session_id = 新会话，无历史
+
+        # Resolve persona prompt: DB default persona > hardcoded fallback
+        persona_prompt = await get_default_persona_prompt()
+        if not persona_prompt:
+            persona_prompt = DEFAULT_PERSONA_FALLBACK
+
         state = ChatState(
-            session_id=f"voice-{user_id}-{int(t0)}",
+            session_id=session_id,
             user_id=str(user_id),
             user_text=clean_text,
+            history=history,
+            persona_prompt=persona_prompt,
         )
 
         try:
             graph = build_graph(llm_provider, safety_in.safety_in, safety_out.safety_out)
-            result: ChatState = await graph.ainvoke(state)
+            result_dict = await graph.ainvoke(state)
 
-            if result.error:
+            if result_dict.get("error"):
                 await ws.send_json(
-                    VoiceErrorOut(code="llm_error", detail=result.error).model_dump()
+                    VoiceErrorOut(code="llm_error", detail=result_dict["error"]).model_dump()
                 )
                 return
 
-            full_text: str = result.llm_text
+            full_text: str = result_dict.get("llm_text", "")
 
             # Emit action tags first (before sentence streaming)
             tags_found = extract_action_tags(full_text)
@@ -194,11 +241,12 @@ async def websocket_voice(
                 VoiceDoneOut(
                     latency_ms=round(latency_ms, 2),
                     tokens={"completion": len(full_text)},
-                    sources=result.knowledge_sources if result.knowledge_sources else None,
+                    sources=result_dict.get("knowledge_sources") or None,
                 ).model_dump()
             )
 
         except Exception as exc:
+            print(f"[voice.ws] Orchestrator error user_id={user_id}: {exc}", flush=True)
             logger.error("ws.voice.orchestrator.error", user_id=user_id, error=str(exc))
             await ws.send_json(
                 VoiceErrorOut(code="internal_error", detail=str(exc)).model_dump()
@@ -208,15 +256,7 @@ async def websocket_voice(
         while True:
             raw = await ws.receive()
 
-            # Per-connection message rate limit (§7.4)
-            from app.core.rate_limit import get_ws_limiter
-            if not await get_ws_limiter().check(str(user_id), "ws_voice"):
-                await ws.send_json(
-                    VoiceErrorOut(code="rate_limited", detail="消息过于频繁，请稍后再试").model_dump()
-                )
-                continue
-
-            # Handle binary (audio) frames
+            # Handle binary (audio) frames — no rate limit (audio is high-throughput)
             if "bytes" in raw:
                 audio_chunk = raw["bytes"]
                 if asr_active:
@@ -225,6 +265,14 @@ async def websocket_voice(
 
             # Handle text (JSON control) messages
             if "text" not in raw:
+                continue
+
+            # Rate limit JSON control messages only (§7.4)
+            from app.core.rate_limit import get_ws_limiter
+            if not await get_ws_limiter().check(str(user_id), "ws_voice"):
+                await ws.send_json(
+                    VoiceErrorOut(code="rate_limited", detail="消息过于频繁，请稍后再试").model_dump()
+                )
                 continue
 
             try:
@@ -247,16 +295,56 @@ async def websocket_voice(
                     continue
                 asr_active = True
                 current_lang = msg.lang
+
+                # Create a real DB session if no session_id provided, so voice
+                # conversations get proper history tracking (not lost on refresh).
+                if msg.session_id:
+                    current_session_id = msg.session_id
+                else:
+                    try:
+                        from app.domain.conversation.service import ConversationService
+                        from app.domain.conversation.repository import ConversationRepository
+                        from app.domain.conversation.schemas import SessionCreate
+                        factory = get_session_factory()
+                        async with factory() as db_session:
+                            svc = ConversationService(ConversationRepository(db_session))
+                            sess = await svc.create_session(user_id, SessionCreate(title="语音对话"))
+                            current_session_id = str(sess.id)
+                    except Exception:
+                        current_session_id = f"voice-{user_id}-{int(time.perf_counter())}"
+
                 audio_buffer.clear()
                 cancel_event.clear()
-                logger.info("ws.voice.start", user_id=user_id, lang=current_lang)
+                logger.info("ws.voice.start", user_id=user_id, lang=current_lang, session_id=current_session_id)
 
             elif msg_type == "voice.end":
                 if not asr_active:
                     continue
-                text = await flush_audio_and_recognize()
+                try:
+                    text = await flush_audio_and_recognize()
+                except Exception as asr_exc:
+                    print(f"[voice.ws] ASR error user_id={user_id}: {asr_exc}", flush=True)
+                    logger.error("ws.voice.asr_error", user_id=user_id, error=str(asr_exc))
+                    await ws.send_json(
+                        VoiceErrorOut(code="asr_error", detail=str(asr_exc)).model_dump()
+                    )
+                    asr_active = False
+                    continue
+                # §13 fix: Persist audio if voice_persistence is enabled
+                if audio_buffer:
+                    import asyncio as _asyncio
+                    _asyncio.ensure_future(_maybe_persist_audio(
+                        user_id=user_id, session_id=current_session_id,
+                        audio_chunks=list(audio_buffer),
+                    ))
+
                 if text and not cancel_event.is_set():
                     await run_orchestrator(text)
+                elif not text:
+                    logger.info("ws.voice.no_speech", user_id=user_id)
+                    await ws.send_json(
+                        VoiceErrorOut(code="no_speech", detail="未检测到语音内容").model_dump()
+                    )
 
             elif msg_type == "voice.barge_in":
                 cancel_event.set()
@@ -274,8 +362,10 @@ async def websocket_voice(
                 )
 
     except WebSocketDisconnect:
+        print(f"[voice.ws] WebSocketDisconnect user_id={user_id}", flush=True)
         logger.info("ws.voice.disconnect", user_id=user_id)
     except Exception as exc:
+        print(f"[voice.ws] Fatal error user_id={user_id}: {exc}", flush=True)
         logger.error("ws.voice.fatal", user_id=user_id, error=str(exc))
         try:
             await ws.close(code=4000)
@@ -284,3 +374,43 @@ async def websocket_voice(
     finally:
         await asr_provider.close()
         await tts_provider.close()
+
+
+async def _maybe_persist_audio(
+    user_id: int, session_id: str, audio_chunks: list[bytes],
+) -> None:
+    """Save voice audio to OSS if voice_persistence system setting is enabled (§13 fix)."""
+    try:
+        from app.domain.system.service import SystemSettingService
+        from app.infra.db import get_session_factory
+        from app.infra.oss import get_oss_client
+        import uuid
+
+        factory = get_session_factory()
+        async with factory() as db_session:
+            svc = SystemSettingService(db_session)
+            persistence_enabled = await svc.get("voice_persistence")
+            if not persistence_enabled:
+                return
+
+        # Persist audio
+        audio_data = b"".join(audio_chunks)
+        if not audio_data:
+            return
+
+        oss = get_oss_client()
+        oss_key = f"voice-recordings/{user_id}/{session_id}/{uuid.uuid4().hex}.webm"
+        oss.put_object(
+            Bucket="eira-user-assets",
+            Key=oss_key,
+            Body=audio_data,
+        )
+        logger.info(
+            "voice.persistence.saved",
+            user_id=user_id,
+            session_id=session_id,
+            oss_key=oss_key,
+            size_bytes=len(audio_data),
+        )
+    except Exception as exc:
+        logger.warning("voice.persistence.failed", error=str(exc))

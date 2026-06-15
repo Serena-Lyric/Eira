@@ -83,13 +83,13 @@ async def _upload_to_oss(kind: str, key: str, body: bytes) -> None:
     oss.put_object(Bucket=bucket, Key=key, Body=body)
 
 
-def _generate_presigned_url(key: str) -> str:
+def _generate_presigned_url(key: str, bucket: str) -> str:
     from app.infra.oss import get_oss_client
 
     oss = get_oss_client()
     url = oss.generate_presigned_url(
         "get_object",
-        Params={"Bucket": OSS_BUCKET, "Key": key},
+        Params={"Bucket": bucket, "Key": key},
         ExpiresIn=SIGNED_URL_TTL,
     )
     return url
@@ -139,9 +139,10 @@ async def upload_background(
     if not file.filename:
         raise HTTPException(400, "文件名不能为空")
 
-    mime = file.content_type or ""
+    from app.core.file_validation import normalize_mime
+    mime = normalize_mime(file.content_type or "")
     if mime not in ALLOWED_BG_MIME:
-        raise HTTPException(400, f"不支持的图片格式。支持: {', '.join(sorted(ALLOWED_BG_MIME))}")
+        raise HTTPException(400, f"不支持的图片格式。支持: {', '.join(sorted(ALLOWED_BG_MIME))}。收到: {file.content_type}")
 
     content = await file.read()
     if len(content) > MAX_BG_SIZE:
@@ -209,10 +210,10 @@ async def get_background_url(
     if not row:
         raise HTTPException(404, "资源不存在")
     oss_key, owner_id = row[0], row[1]
-    if owner_id != user.id and user.role != "admin":
+    if owner_id != user.id:
         raise HTTPException(404, "资源不存在")
 
-    url = _generate_presigned_url(oss_key)
+    url = _generate_presigned_url(oss_key, "eira-backgrounds")
     return AssetUrlOut(url=url)
 
 
@@ -231,7 +232,7 @@ async def delete_background(
     if not row:
         raise HTTPException(404, "资源不存在")
     oss_key, owner_id = row[0], row[1]
-    if owner_id != user.id and user.role != "admin":
+    if owner_id != user.id:
         raise HTTPException(404, "资源不存在")
 
     # Delete from OSS
@@ -344,7 +345,7 @@ async def delete_live2d_model(
     if not row:
         raise HTTPException(404, "资源不存在")
     oss_key, owner_id = row[0], row[1]
-    if owner_id != user.id and user.role != "admin":
+    if owner_id != user.id:
         raise HTTPException(404, "资源不存在")
 
     try:

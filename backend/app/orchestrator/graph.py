@@ -53,10 +53,10 @@ def build_graph(
         provider: LLM provider instance injected into llm_call node.
         safety_in_fn: Optional custom safety_in node.
         safety_out_fn: Optional custom safety_out node.
-        knowledge_service: KnowledgeService instance for RAG retrieval.
-            If None, retrieve_kb node is a no-op passthrough.
-        search_provider: BaseSearchProvider instance for web search.
-            If None, web_search node is a no-op passthrough.
+        knowledge_service: Optional KnowledgeService for RAG (tests).
+            When None, each invocation auto-instantiates from DB-aware settings.
+        search_provider: Optional BaseSearchProvider (tests).
+            When None, each invocation auto-instantiates from DB-aware settings.
     """
     if safety_in_fn is None:
         from app.orchestrator.nodes.safety_in import safety_in as _sin
@@ -72,15 +72,53 @@ def build_graph(
     async def _llm_call(state: ChatState) -> dict:
         return await llm_call.llm_call(state, provider)
 
-    # Wrap retrieve_kb with optional knowledge_service
+    # Wrap retrieve_kb — uses injected service or auto-instantiates (§2 fix)
     async def _retrieve_kb(state: ChatState) -> dict:
         from app.orchestrator.nodes.retrieve_kb import retrieve_kb
-        return await retrieve_kb(state, knowledge_service)
 
-    # Wrap web_search with optional search_provider
+        if knowledge_service is not None:
+            return await retrieve_kb(state, knowledge_service)
+
+        # Auto-instantiate with DB-aware settings
+        from app.infra.db import get_session_factory
+        from app.domain.knowledge.repository import KnowledgeRepository
+        from app.domain.knowledge.service import KnowledgeService
+
+        try:
+            factory = get_session_factory()
+            async with factory() as session:
+                repo = KnowledgeRepository(session)
+                svc = KnowledgeService(repo)
+                await svc.init_embedding_provider()
+                return await retrieve_kb(state, svc)
+        except Exception as exc:
+            import structlog
+            structlog.get_logger(__name__).warning(
+                "retrieve_kb.init_error", error=str(exc)
+            )
+            return await retrieve_kb(state, None)
+
+    # Wrap web_search — uses injected provider or auto-instantiates (§2 fix)
     async def _web_search(state: ChatState) -> dict:
         from app.orchestrator.nodes.web_search import web_search
-        return await web_search(state, search_provider)
+
+        if search_provider is not None:
+            return await web_search(state, search_provider)
+
+        # Auto-instantiate with DB-aware settings
+        from app.capabilities.effective_settings import get_effective_search_settings
+        from app.capabilities.search.factory import create_search_provider
+
+        try:
+            search_settings = await get_effective_search_settings()
+            provider = create_search_provider(search_settings)
+            return await web_search(state, provider)
+        except Exception as exc:
+            import structlog
+            structlog.get_logger(__name__).warning(
+                "web_search.init_error", error=str(exc)
+            )
+            return await web_search(state, None)
 
     workflow = StateGraph(ChatState)
 

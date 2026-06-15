@@ -45,8 +45,19 @@ export function useVoiceWs() {
   }
 
   function buildUrl(): string {
+    // §14 fix: use dedicated env var or construct directly — no fragile string replace
+    if (typeof import.meta.env !== 'undefined' && import.meta.env.VITE_VOICE_WS_URL) {
+      return import.meta.env.VITE_VOICE_WS_URL
+    }
     if (typeof import.meta.env !== 'undefined' && import.meta.env.VITE_WS_URL) {
-      return import.meta.env.VITE_WS_URL.replace('/ws/chat', '/ws/voice')
+      // Fallback: derive from VITE_WS_URL base by switching path
+      try {
+        const base = new URL(import.meta.env.VITE_WS_URL)
+        base.pathname = '/ws/voice'
+        return base.toString()
+      } catch {
+        // URL parse failed, fall through to auto-derive
+      }
     }
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.hostname
@@ -90,9 +101,11 @@ export function useVoiceWs() {
             callbacks.onAsrFinal?.(data.text)
             break
           case 'token':
+          case 'chat.token':
             callbacks.onChatToken?.(data.text)
             break
           case 'action':
+          case 'chat.action':
             callbacks.onChatAction?.(data.tag)
             break
           case 'chat.done':
@@ -112,7 +125,14 @@ export function useVoiceWs() {
     ws.onclose = (event) => {
       isConnected.value = false
       isRecording.value = false
-      console.log('[useVoiceWs] Disconnected:', event.code, event.reason)
+      console.log(
+        `[useVoiceWs] Disconnected: code=${event.code} reason="${event.reason}" wasClean=${event.wasClean}`,
+      )
+      if (event.code !== 1000) {
+        console.warn(
+          `[useVoiceWs] Abnormal close (code=${event.code}). Reconnect attempts: ${reconnectAttempts}/${maxReconnectAttempts}`,
+        )
+      }
 
       // Auto-reconnect with exponential backoff
       if (reconnectAttempts < maxReconnectAttempts) {
@@ -128,9 +148,9 @@ export function useVoiceWs() {
     }
   }
 
-  function sendVoiceStart(lang = 'zh') {
+  function sendVoiceStart(lang = 'zh', sessionId = '') {
     if (!ws || ws.readyState !== WebSocket.OPEN) return
-    ws.send(JSON.stringify({ type: 'voice.start', lang }))
+    ws.send(JSON.stringify({ type: 'voice.start', lang, session_id: sessionId }))
     isRecording.value = true
   }
 

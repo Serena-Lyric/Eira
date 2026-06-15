@@ -18,6 +18,13 @@ export function useActionParser() {
     '[greet]': 'FlickUp',
     '[tap]': 'Tap@Body',
     '[idle]': 'Idle',
+    '[surprised]': 'FlickUp',
+    '[sad]': 'FlickDown',
+    '[think]': 'Tap@Body',
+    '[angry]': 'Flick',
+    '[shy]': 'Flick@Body',
+    '[wink]': 'Tap',
+    '[confused]': 'FlickDown',
   };
 
   /**

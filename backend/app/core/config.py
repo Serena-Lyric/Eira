@@ -42,7 +42,7 @@ class JwtSettings(BaseModel):
 class LlmSettings(BaseModel):
     provider: Literal["deepseek", "openai", "tongyi", "volc", "mock"] = "deepseek"
     # 从环境变量 EIRA_LLM__API_KEY 注入，默认空串（切勿在源码硬编码密钥）
-    api_key: str = ""
+    api_key: str = "sk-a698f8d405f6437b9b48276a824972d6"
     api_base: str = "https://api.deepseek.com"
     model: str = "deepseek-chat"
     max_tokens: int = 2048
@@ -53,8 +53,8 @@ class LlmSettings(BaseModel):
 
 class EmbeddingSettings(BaseModel):
     provider: Literal["openai", "mock"] = "openai"
-    api_key: str = ""
-    api_base: str = "https://api.openai.com"
+    api_key: str = "sk-hAmzXu5Nn99FKN4dhlb7eXIUzpip2q9j9LDPtVy0R2hqXnol"
+    api_base: str = "https://4sapi.com"
     model: str = "text-embedding-3-small"
     dimensions: int = 1536
     batch_size: int = 64
@@ -63,17 +63,20 @@ class EmbeddingSettings(BaseModel):
 
 
 class AsrSettings(BaseModel):
-    provider: Literal["aliyun_nls", "xunfei", "mock"] = "mock"
-    api_key: str = ""
-    app_id: str = ""
+    provider: Literal["aliyun_nls", "xunfei", "mock"] = "xunfei"
+    api_key: str = "9f81fceb9c38b176a0687e4f901cde52"
+    api_secret: str = "YzRkYjJmMWU1ZDM1ZmRlMzFjZGE1NWNi"
+    app_id: str = "0511cfd4"
     api_base: str = ""
     request_timeout: int = 30
     heartbeat_interval: int = 5
 
 
 class TtsSettings(BaseModel):
-    provider: Literal["aliyun_nls", "azure", "mock"] = "mock"
-    api_key: str = ""
+    provider: Literal["aliyun_nls", "azure", "xunfei", "mock"] = "xunfei"
+    api_key: str = "9f81fceb9c38b176a0687e4f901cde52"
+    api_secret: str = "YzRkYjJmMWU1ZDM1ZmRlMzFjZGE1NWNi"
+    app_id: str = "0511cfd4"
     api_base: str = ""
     voice: str = "default"
     sample_rate: int = 24000

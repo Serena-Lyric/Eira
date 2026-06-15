@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue';
-import defaultBg from '../assets/bg-default.jpg';
 import { useChatSession } from '../composables/useChatSession';
 import { useLive2DController } from '../composables/useLive2DController';
 import { useActionParser } from '../composables/useActionParser';
 import { useVoiceWs } from '../composables/useVoiceWs';
 import { useAudioPlayer } from '../composables/useAudioPlayer';
-import { userApi, feedbackApi, voiceApi } from '../services/api';
+import { convertWebMToPcm, pcmChunks } from '../composables/useAudioProcessor';
+import { userApi, feedbackApi, voiceApi, documentApi } from '../services/api';
+import { useAuthStore } from '../stores/auth';
 import type { FeedbackResponse, BackgroundUploadResponse, ModelUploadResponse } from '../services/types';
 
 // ── Chat Session (replaces mockBackendResponse) ─────────────────
@@ -25,7 +26,7 @@ const {
 // ── Live2D Controller ───────────────────────────────────────────
 
 const live2dContainerRef = ref<HTMLElement | null>(null);
-const { containerRef: l2dRef, isLoaded: l2dLoaded, activeModelId, loadError: l2dError, triggerMotion, setMouthOpen } =
+const { containerRef: l2dRef, isLoaded: l2dLoaded, activeModelOssKey, loadError: l2dError, triggerMotion, setMouthOpen } =
   useLive2DController();
 
 // ── Action Parser ────────────────────────────────────────────────
@@ -67,20 +68,21 @@ audioPlayer.setCallbacks({
 // Voice WS callbacks
 const voiceWsCallbacks = {
   onAsrPartial: (text: string) => {
-    // Show partial recognition in input field
-    inputText.value = text;
+    // Show partial recognition as floating subtitle (not in input field)
+    asrSubtitle.value = text;
   },
   onAsrFinal: (text: string) => {
-    // Final ASR result → use as input text
-    inputText.value = text;
-    // Auto-send the recognized text to trigger LLM response
+    // Final ASR result — clear subtitle, show as user message
+    asrSubtitle.value = '';
     if (text.trim()) {
-      wsSendText(text.trim());
+      wsMessages.value.push({ role: 'user', content: text, ts: Date.now() });
     }
+    wsPhase.value = 'thinking';
+    currentResponse.value = '';
   },
   onChatToken: (text: string) => {
-    // Accumulate streaming response text (already handled by useChatSession)
-    // This is a secondary stream from /ws/voice
+    // Voice WS streams LLM response — accumulate into chat bubble
+    currentResponse.value += text;
   },
   onChatAction: (tag: string) => {
     // Trigger Live2D motion
@@ -93,7 +95,16 @@ const voiceWsCallbacks = {
     audioPlayer.enqueue(chunk);
   },
   onChatDone: (_data: Record<string, unknown>) => {
-    // Voice turn complete
+    // Voice turn complete — finalize the assistant message
+    if (currentResponse.value) {
+      wsMessages.value.push({
+        role: 'assistant',
+        content: currentResponse.value,
+        ts: Date.now(),
+      });
+      currentResponse.value = '';
+    }
+    wsPhase.value = 'idle';
   },
   onError: (code: string, detail: string) => {
     console.error(`[Voice] Error ${code}: ${detail}`);
@@ -109,6 +120,7 @@ interface QuickQuestionItem {
 // 快捷问题：初始为空，仅在后端推送数据后才显示
 const quickQuestions = ref<QuickQuestionItem[]>([]);
 const inputText = ref('');
+const asrSubtitle = ref('');  // floating subtitle during voice input
 const isPressed = ref<string | null>(null);
 const showSettings = ref(false);
 
@@ -122,10 +134,11 @@ const showMic = ref(true);
 const quickQuestionsMode = ref<'center' | 'left' | 'hidden'>('center');
 const inputBarMode = ref<'center' | 'left' | 'hidden'>('center');
 const chatBubbleMode = ref<'center' | 'left' | 'hidden'>('center');
-const bgUrl = ref(defaultBg);
+const bgUrl = ref('');  // 无背景时显示蓝色占位（CSS fallback）
 const bgBlurEnabled = ref(false);
 const voiceInputMode = ref<'click' | 'persistent' | 'smart' | 'hidden'>('click');
 const speechRate = ref(1.0);
+const modelSource = ref<'default' | 'custom'>('default');
 
 // 防抖保存用户偏好
 let savePrefsTimer: ReturnType<typeof setTimeout> | null = null;
@@ -143,7 +156,8 @@ function debouncedSavePrefs() {
         chat_bubble_mode: chatBubbleMode.value,
         quick_questions_mode: quickQuestionsMode.value,
         input_bar_mode: inputBarMode.value,
-        active_model_id: activeModelId.value ?? undefined,
+        active_model_id: activeModelOssKey.value ?? undefined,
+        model_source: modelSource.value,
         voice_input_mode: voiceInputMode.value,
         default_speech_rate: speechRate.value,
       });
@@ -166,7 +180,7 @@ watch(inputBarMode, (newVal) => {
 
 // 自动保存用户偏好（除 inputBarMode 触发的级联外）
 watch([bgBlurEnabled, voiceEnabled, cameraMode, showMic, voiceInputMode,
-       chatBubbleMode, quickQuestionsMode, inputBarMode, speechRate],
+       chatBubbleMode, quickQuestionsMode, inputBarMode, speechRate, modelSource],
   () => { debouncedSavePrefs(); }
 );
 
@@ -226,7 +240,6 @@ async function startVoiceRecording() {
     // Ensure voice WS is connected
     if (!voiceWs.isConnected.value) {
       voiceWs.connect(voiceWsCallbacks)
-      // Wait for connection
       await new Promise<void>((resolve) => {
         const check = setInterval(() => {
           if (voiceWs.isConnected.value) {
@@ -239,18 +252,15 @@ async function startVoiceRecording() {
     }
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    // Use timeslice to get dataavailable events every 250ms for streaming
+    // No timeslice — accumulate all audio, convert and send on stop
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
     audioChunks = []
 
-    // Send voice.start control message
-    voiceWs.sendVoiceStart('zh')
+    // Send voice.start immediately so ASR stream is ready
+    voiceWs.sendVoiceStart('zh', sessionId.value)
 
     mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
-        // Stream audio chunk directly over WebSocket
-        voiceWs.sendAudioChunk(e.data)
-        // Also keep local buffer as fallback
         audioChunks.push(e.data)
       }
     }
@@ -258,24 +268,37 @@ async function startVoiceRecording() {
     mediaRecorder.onstop = async () => {
       stream.getTracks().forEach((t) => t.stop())
       isRecording.value = false
-      // Send voice.end control message
-      voiceWs.sendVoiceEnd()
 
-      // Fallback: if WS is not connected, use REST API
-      if (!voiceWs.isConnected.value && audioChunks.length > 0) {
-        const blob = new Blob(audioChunks, { type: 'audio/webm' })
-        console.log('API: POST /voice/asr — audio size:', (blob.size / 1024).toFixed(1), 'KB')
-        try {
-          const result = await voiceApi.sendAudio(blob)
-          if (result.text) inputText.value = result.text
-        } catch {
-          console.warn('ASR request failed')
-        }
+      if (audioChunks.length === 0) {
+        voiceWs.sendVoiceEnd()
+        return
       }
+
+      const webmBlob = new Blob(audioChunks, { type: 'audio/webm' })
+      console.log(`[Voice] WebM blob: ${(webmBlob.size / 1024).toFixed(1)} KB, converting to PCM...`)
+
+      try {
+        // Convert WebM/Opus → 16kHz Int16 PCM
+        const pcm = await convertWebMToPcm(webmBlob)
+        console.log(`[Voice] PCM: ${(pcm.buffer.byteLength / 1024).toFixed(1)} KB, ${pcm.sampleRate}Hz`)
+
+        // Send PCM chunks over voice WS (they accumulate in server audio_buffer)
+        let sentBytes = 0
+        for (const chunk of pcmChunks(pcm, 20)) {
+          voiceWs.sendAudioChunk(chunk)
+          sentBytes += chunk.byteLength
+        }
+        console.log(`[Voice] Sent ${sentBytes} bytes PCM in ${Math.ceil(pcm.buffer.byteLength / 640)} chunks`)
+      } catch (convErr) {
+        console.error('[Voice] PCM conversion failed:', convErr)
+      }
+
+      // Signal end of voice input → triggers ASR + LLM + TTS
+      voiceWs.sendVoiceEnd()
     }
 
-    // Request data every 250ms for streaming
-    mediaRecorder.start(250)
+    // Start recording (no timeslice — collect all data, process on stop)
+    mediaRecorder.start()
     isRecording.value = true
   } catch (err) {
     console.warn('Microphone access denied:', err)
@@ -448,14 +471,19 @@ function handleSend() {
   if (inputText.value.trim()) {
     const text = inputText.value.trim();
     const cleanText = actionParser.stripTags(text);
-    wsSendText(cleanText);
+    // 附加位置上下文（如果已获取）
+    const locationCtx = (window as any).__eiraLocationCtx || '';
+    const finalText = locationCtx ? `${locationCtx}\n${cleanText}` : cleanText;
+    wsSendText(finalText);
     inputText.value = '';
   }
 }
 
 function handleQuickQuestion(q: QuickQuestionItem) {
   const text = q.send_text || q.display_text;
-  wsSendText(text);
+  const locationCtx = (window as any).__eiraLocationCtx || '';
+  const finalText = locationCtx ? `${locationCtx}\n${text}` : text;
+  wsSendText(finalText);
 }
 
 // ── File upload handlers (unchanged) ─────────────────────────────
@@ -465,6 +493,13 @@ function triggerBgUpload() {
 }
 
 async function handleBgUpload(event: Event) {
+  const auth = useAuthStore();
+  if (!auth.accessToken) {
+    bgUploadMsg.value = '请先登录'
+    setTimeout(() => { bgUploadMsg.value = '' }, 3000)
+    return
+  }
+
   const target = event.target as HTMLInputElement;
   if (target.files && target.files.length > 0) {
     const file = target.files[0];
@@ -497,7 +532,13 @@ async function handleBgUpload(event: Event) {
       if (response.success) {
         bgUploadMsg.value = '✓ 背景图已保存'
         // 使用后端返回的 URL 替换本地 data URL
-        if (response.url) bgUrl.value = response.url
+        if (response.url) {
+          bgUrl.value = response.url
+          // 持久化到后端偏好，防止刷新丢失
+          try {
+            await userApi.savePreferences({ background_url: response.url })
+          } catch { /* 静默失败，不影响上传成功 */ }
+        }
       } else {
         bgUploadMsg.value = response.message || '保存失败，请重试'
       }
@@ -527,6 +568,14 @@ function triggerModelUpload() {
 }
 
 async function handleModelUpload(event: Event) {
+  const auth = useAuthStore();
+  if (!auth.accessToken) {
+    modelUploadMsg.value = '请先登录'
+    modelUploadOk.value = false
+    setTimeout(() => { modelUploadMsg.value = '' }, 3000)
+    return
+  }
+
   const target = event.target as HTMLInputElement;
   if (target.files && target.files.length > 0) {
     const file = target.files[0];
@@ -583,12 +632,36 @@ function triggerAttachmentUpload() {
   attachmentInput.value?.click();
 }
 
-function handleAttachmentUpload(event: Event) {
+async function handleAttachmentUpload(event: Event) {
   const target = event.target as HTMLInputElement;
   if (target.files && target.files.length > 0) {
     const file = target.files[0]
-    // API: 发送文件到后端
-    console.log('API: POST /conversations/upload — file:', file.name, file.type)
+
+    // Check auth
+    const auth = useAuthStore();
+    if (!auth.accessToken) {
+      console.warn('[Chat] Attachment upload skipped: not logged in')
+      target.value = ''
+      return
+    }
+
+    try {
+      const result = await documentApi.upload(file)
+      console.log(`[Chat] Document uploaded: id=${result.document_id} status=${result.status}`)
+      // 向用户展示上传结果
+      currentResponse.value = `📎 文档「${result.filename}」已上传，正在处理中...`
+      wsPhase.value = 'done'
+      setTimeout(() => {
+        currentResponse.value = ''
+        wsPhase.value = 'idle'
+      }, 3000)
+      // 将文档引用发送给 LLM
+      if (result.document_id) {
+        await wsSendText(`[上传了文档: ${result.filename} (id=${result.document_id})]`)
+      }
+    } catch (err: any) {
+      console.error('[Chat] Document upload failed:', err?.message || err)
+    }
     target.value = '';
   }
 }
@@ -621,6 +694,22 @@ onMounted(async () => {
   // 检测摄像头硬件
   await detectCameras()
 
+  // 获取浏览器地理位置（用于回答位置相关问题）
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const ctx = `[用户位置: 纬度${pos.coords.latitude.toFixed(4)}, 经度${pos.coords.longitude.toFixed(4)}]`
+        console.log('[Chat] Geolocation obtained:', ctx)
+        // 存储到全局上下文，后续消息中携带
+        ;(window as any).__eiraLocationCtx = ctx
+      },
+      () => {
+        console.log('[Chat] Geolocation denied or unavailable')
+      },
+      { timeout: 5000, maximumAge: 300000 },
+    )
+  }
+
   // Load user preferences from backend (if available)
   try {
     const prefs = await userApi.getPreferences()
@@ -632,6 +721,7 @@ onMounted(async () => {
       if (typeof prefs.show_mic === 'boolean') showMic.value = prefs.show_mic
       if (prefs.voice_input_mode) voiceInputMode.value = prefs.voice_input_mode
       if (typeof prefs.default_speech_rate === 'number') speechRate.value = prefs.default_speech_rate
+      if (prefs.model_source) modelSource.value = prefs.model_source
       if (prefs.quick_questions) {
         // 向后兼容：旧的 string[] 格式转换为 QuickQuestionItem[]
         const firstItem = prefs.quick_questions[0];
@@ -811,6 +901,10 @@ onUnmounted(() => {
             class="input-bar"
             :class="`mode-${inputBarMode}`"
           >
+            <!-- ASR subtitle overlay -->
+            <transition name="fade">
+              <div v-if="asrSubtitle" class="asr-subtitle">{{ asrSubtitle }}</div>
+            </transition>
             <transition name="fade">
               <button v-if="showMic" class="action-btn mic-btn" :class="{ recording: isRecording }" @click="toggleVoiceRecording">
                 <svg v-if="!isRecording" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -879,6 +973,13 @@ onUnmounted(() => {
             </div>
             <div class="s-item" v-if="modelUploadMsg" :style="{background: modelUploadOk ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', border: '1px solid ' + (modelUploadOk ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)')}">
               <span :style="{color: modelUploadOk ? '#10B981' : '#EF4444', fontSize:'13px'}">{{ modelUploadMsg }}</span>
+            </div>
+            <div class="s-item">
+              <div class="s-info"><h3>模型源</h3><p>{{ modelSource === 'custom' ? '使用上传的自定义模型' : '使用官方默认模型' }}</p></div>
+              <div class="seg">
+                <button :class="{sel: modelSource==='default'}" @click="modelSource='default'; debouncedSavePrefs()">默认</button>
+                <button :class="{sel: modelSource==='custom'}" @click="modelSource='custom'; debouncedSavePrefs()">自定义</button>
+              </div>
             </div>
             <div class="s-item">
               <div class="s-info"><h3>背景模糊</h3><p>突出前景内容</p></div>
@@ -972,7 +1073,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.web-user-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; font-family: 'PingFang SC', system-ui, sans-serif;
+.web-user-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; background: #0078D7; display: flex; align-items: center; justify-content: center; font-family: 'PingFang SC', system-ui, sans-serif;
   /* 全局禁用文字框选（拖拽 Live2D 时不会误选页面文字） */
   user-select: none; -webkit-user-select: none;
 }
@@ -1032,6 +1133,12 @@ onUnmounted(() => {
 .input-bar.mode-center { width: 100%; max-width: 760px; align-self: center; }
 .input-bar.mode-left { width: 100%; max-width: 760px; align-self: flex-start; }
 
+.asr-subtitle {
+  position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.75); color: #FFF; padding: 6px 16px; border-radius: 20px;
+  font-size: 14px; max-width: 80vw; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; pointer-events: none; z-index: 10;
+}
 .action-btn { width: 44px; height: 44px; border-radius: 50%; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; background: rgba(255,255,255,0.1); color: #FFF; flex-shrink: 0; }
 .action-btn svg { width: 22px; height: 24px; }
 .send-btn { background: linear-gradient(135deg, #5B92FF, #3867ED); }
